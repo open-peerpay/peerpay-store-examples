@@ -22,6 +22,8 @@ PEERPAY_BASE_URL=http://localhost:51828 PORT=5174 bun run dev
 
 打开 `http://localhost:5174`，选择商品下单。返回的店铺订单号形如 `store_xxx`，可以在左侧输入框查询状态。
 
+示例店铺创建订单时会为每笔订单随机生成 `callbackSecret`，传给 PeerPay 并保存在本地订单表。PeerPay 回调到 `POST /api/peerpay/callback` 时，店铺会按 `merchantOrderId` 找到对应密钥，并校验 body 里的 `sign` 或请求头 `x-peerpay-signature`。
+
 ## 接口
 
 - `GET /api/products`：商品列表

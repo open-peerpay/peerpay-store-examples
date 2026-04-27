@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -75,11 +76,16 @@ db.exec(`
     actual_amount TEXT,
     pay_url TEXT,
     amount_input_required INTEGER NOT NULL DEFAULT 0,
+    callback_secret TEXT,
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
 `);
+const existingColumns = db.query("PRAGMA table_info(store_orders)").all() as Array<{ name: string }>;
+if (!existingColumns.some((column) => column.name === "callback_secret")) {
+  db.exec("ALTER TABLE store_orders ADD COLUMN callback_secret TEXT");
+}
 
 function json(data: unknown, init: ResponseInit = {}) {
   return Response.json({ data }, {
@@ -105,6 +111,10 @@ function createStoreOrderId() {
   return `store_${crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`;
 }
 
+function createCallbackSecret() {
+  return randomBytes(32).toString("base64url");
+}
+
 function isApiErrorPayload(value: unknown): value is ApiErrorPayload {
   return typeof value === "object" && value !== null && "error" in value;
 }
@@ -115,6 +125,37 @@ function peerpayBaseUrl() {
 
 function publicBaseUrl(req: Request) {
   return (Bun.env.STORE_PUBLIC_URL ?? new URL(req.url).origin).replace(/\/$/, "");
+}
+
+function signPayload(payload: Record<string, unknown>, secret: string) {
+  const canonical = Object.keys(payload)
+    .sort()
+    .map((key) => `${key}=${payload[key] ?? ""}`)
+    .join("&");
+  return createHmac("sha256", secret).update(canonical).digest("hex");
+}
+
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function verifyCallbackSignature(req: Request, body: Record<string, unknown>, secret: string | null) {
+  if (!secret) {
+    return;
+  }
+
+  const signature = req.headers.get("x-peerpay-signature")?.trim() || String(body.sign ?? "");
+  if (!signature) {
+    throw new Error("缺少 PeerPay 回调签名");
+  }
+
+  const { sign: _sign, ...unsignedPayload } = body;
+  const expected = signPayload(unsignedPayload, secret);
+  if (!safeEqual(signature, expected)) {
+    throw new Error("PeerPay 回调签名无效");
+  }
 }
 
 function mapOrder(row: Record<string, unknown>): StoreOrder {
@@ -153,12 +194,13 @@ async function createOrder(req: Request) {
   }
 
   const id = createStoreOrderId();
+  const callbackSecret = createCallbackSecret();
   const createdAt = nowIso();
   db.query(`
     INSERT INTO store_orders (
-      id, product_id, product_name, amount, payment_channel, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, product.id, product.name, product.price, product.channel, "created", createdAt, createdAt);
+      id, product_id, product_name, amount, payment_channel, status, callback_secret, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, product.id, product.name, product.price, product.channel, "created", callbackSecret, createdAt, createdAt);
 
   try {
     const response = await fetch(`${peerpayBaseUrl()}/api/orders`, {
@@ -169,7 +211,8 @@ async function createOrder(req: Request) {
         paymentChannel: product.channel,
         merchantOrderId: id,
         subject: product.name,
-        callbackUrl: `${publicBaseUrl(req)}/api/peerpay/callback`
+        callbackUrl: `${publicBaseUrl(req)}/api/peerpay/callback`,
+        callbackSecret
       })
     });
     const payload = await response.json().catch(() => ({})) as { data?: PeerPayOrder | { error?: string }; error?: string };
@@ -202,10 +245,21 @@ async function handlePeerPayCallback(req: Request) {
     status?: StoreOrderStatus;
     actualAmount?: string;
     paidAt?: string;
+    sign?: string;
   }>(req);
   const storeOrderId = body.merchantOrderId;
   if (!storeOrderId) {
     return error("缺少 merchantOrderId", 400);
+  }
+  const secretRow = db.query("SELECT callback_secret FROM store_orders WHERE id = ?")
+    .get(storeOrderId) as { callback_secret: string | null } | null;
+  if (!secretRow) {
+    return error("店铺订单不存在", 404);
+  }
+  try {
+    verifyCallbackSignature(req, body as Record<string, unknown>, secretRow.callback_secret);
+  } catch (err) {
+    return error(err instanceof Error ? err.message : "PeerPay 回调签名校验失败", 401);
   }
 
   const nextStatus = body.status === "notified" ? "notified" : body.status === "paid" ? "paid" : body.status === "expired" ? "expired" : "pending";
@@ -216,9 +270,6 @@ async function handlePeerPayCallback(req: Request) {
   `).run(nextStatus, body.status ?? null, body.actualAmount ?? null, nowIso(), storeOrderId);
 
   const order = getStoreOrder(storeOrderId);
-  if (!order) {
-    return error("店铺订单不存在", 404);
-  }
   return json({ ok: true, order });
 }
 
