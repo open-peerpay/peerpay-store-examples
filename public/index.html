@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PeerPay Mock Store</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f6f7f3;
+        color: #1d2522;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(280px, 420px) 1fr;
+      }
+
+      aside {
+        background: #22352f;
+        color: #f8fbf5;
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .intro {
+        color: #cfddd1;
+        line-height: 1.65;
+      }
+
+      .status-search {
+        display: grid;
+        gap: 10px;
+        margin-top: auto;
+      }
+
+      .status-search label {
+        color: #cfddd1;
+        font-size: 13px;
+      }
+
+      .status-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+
+      input {
+        min-width: 0;
+        border: 1px solid #d5dbd4;
+        border-radius: 6px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 14px;
+        background: #d95f3d;
+        color: #fff;
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      button.secondary {
+        background: #3d7466;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.65;
+      }
+
+      main {
+        padding: 28px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 22px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        border-bottom: 1px solid #dfe5dd;
+        padding-bottom: 18px;
+      }
+
+      .topbar h2 {
+        font-size: 22px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 14px;
+        align-content: start;
+      }
+
+      .card {
+        background: #fff;
+        border: 1px solid #dde4db;
+        border-radius: 8px;
+        padding: 18px;
+        display: grid;
+        gap: 14px;
+        box-shadow: 0 8px 24px rgb(23 35 30 / 0.06);
+      }
+
+      .card header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .name {
+        font-weight: 800;
+        font-size: 18px;
+      }
+
+      .desc {
+        color: #63716b;
+        line-height: 1.5;
+      }
+
+      .price {
+        color: #d95f3d;
+        font-weight: 900;
+        font-size: 22px;
+        white-space: nowrap;
+      }
+
+      .channel {
+        color: #3d7466;
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      .order-panel {
+        position: sticky;
+        top: 20px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .order-box {
+        background: #fff;
+        border: 1px solid #dde4db;
+        border-radius: 8px;
+        padding: 18px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .order-box dl {
+        display: grid;
+        grid-template-columns: 96px 1fr;
+        gap: 8px;
+        margin: 0;
+      }
+
+      .order-box dt {
+        color: #63716b;
+      }
+
+      .order-box dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .pay-link {
+        display: inline-flex;
+        width: fit-content;
+        color: #1d5f93;
+        font-weight: 800;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr minmax(280px, 380px);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .history {
+        display: grid;
+        gap: 8px;
+      }
+
+      .history button {
+        width: 100%;
+        background: #eef3ed;
+        color: #1d2522;
+        text-align: left;
+        font-weight: 600;
+      }
+
+      @media (max-width: 880px) {
+        .shell,
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        aside {
+          min-height: auto;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .order-panel {
+          position: static;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <div>
+          <h1>PeerPay Mock Store</h1>
+          <p class="intro">低价商品联调店铺。下单会创建 PeerPay 订单，店铺侧可查询本地订单状态，并接收 PeerPay 回调更新。</p>
+        </div>
+        <div class="status-search">
+          <label for="orderId">订单状态查询</label>
+          <div class="status-row">
+            <input id="orderId" placeholder="store_..." />
+            <button class="secondary" id="searchButton">查询</button>
+          </div>
+        </div>
+      </aside>
+      <main>
+        <div class="topbar">
+          <h2>商品</h2>
+          <button class="secondary" id="refreshButton">刷新订单</button>
+        </div>
+        <div class="layout">
+          <section class="grid" id="products"></section>
+          <section class="order-panel">
+            <div class="order-box" id="currentOrder">
+              <strong>暂无订单</strong>
+              <p class="desc">选择一个小商品开始联调。</p>
+            </div>
+            <div class="history" id="history"></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script type="module">
+      const productsEl = document.querySelector("#products");
+      const orderEl = document.querySelector("#currentOrder");
+      const historyEl = document.querySelector("#history");
+      const orderInput = document.querySelector("#orderId");
+      const searchButton = document.querySelector("#searchButton");
+      const refreshButton = document.querySelector("#refreshButton");
+
+      const channelName = { alipay: "支付宝", wechat: "微信" };
+      let busy = false;
+
+      async function api(path, options) {
+        const response = await fetch(path, {
+          ...options,
+          headers: { "content-type": "application/json", ...options?.headers }
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.data?.error ?? "请求失败");
+        }
+        return payload.data;
+      }
+
+      function renderOrder(order) {
+        if (!order) return;
+        orderInput.value = order.id;
+        const payUrl = order.payUrl
+          ? `<a class="pay-link" href="${order.payUrl}" target="_blank" rel="noreferrer">打开付款 URL</a>`
+          : "未生成";
+        orderEl.innerHTML = `
+          <strong>${order.productName}</strong>
+          <dl>
+            <dt>店铺单号</dt><dd>${order.id}</dd>
+            <dt>店铺状态</dt><dd>${order.status}</dd>
+            <dt>PeerPay</dt><dd>${order.peerpayOrderId ?? "未创建"}</dd>
+            <dt>支付方式</dt><dd>${channelName[order.paymentChannel]}</dd>
+            <dt>商品金额</dt><dd>￥${order.amount}</dd>
+            <dt>实付金额</dt><dd>${order.actualAmount ? `￥${order.actualAmount}` : "未生成"}</dd>
+            <dt>付款 URL</dt><dd>${payUrl}</dd>
+            <dt>手动输入</dt><dd>${order.amountInputRequired ? "需要" : "不需要"}</dd>
+            ${order.error ? `<dt>错误</dt><dd>${order.error}</dd>` : ""}
+          </dl>
+        `;
+      }
+
+      async function loadProducts() {
+        const products = await api("/api/products");
+        productsEl.innerHTML = products.map((product) => `
+          <article class="card">
+            <header>
+              <div>
+                <div class="name">${product.name}</div>
+                <div class="channel">${channelName[product.channel]}</div>
+              </div>
+              <div class="price">￥${product.price}</div>
+            </header>
+            <p class="desc">${product.description}</p>
+            <button data-product="${product.id}">下单</button>
+          </article>
+        `).join("");
+      }
+
+      async function loadOrders() {
+        const orders = await api("/api/orders");
+        historyEl.innerHTML = orders.slice(0, 8).map((order) => `
+          <button data-order="${order.id}">${order.productName} · ${order.status} · ￥${order.amount}</button>
+        `).join("");
+      }
+
+      productsEl.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-product]");
+        if (!button || busy) return;
+        busy = true;
+        button.disabled = true;
+        try {
+          const order = await api("/api/orders", {
+            method: "POST",
+            body: JSON.stringify({ productId: button.dataset.product })
+          });
+          renderOrder(order);
+          await loadOrders();
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          busy = false;
+          button.disabled = false;
+        }
+      });
+
+      historyEl.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-order]");
+        if (!button) return;
+        renderOrder(await api(`/api/orders/${button.dataset.order}`));
+      });
+
+      searchButton.addEventListener("click", async () => {
+        const id = orderInput.value.trim();
+        if (!id) return;
+        try {
+          renderOrder(await api(`/api/orders/${id}`));
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+
+      refreshButton.addEventListener("click", loadOrders);
+
+      await loadProducts();
+      await loadOrders();
+    </script>
+  </body>
+</html>
