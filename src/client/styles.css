@@ -494,6 +494,64 @@ body {
   font-size: 24px;
 }
 
+.store-page .store-button {
+  height: auto;
+  min-height: 42px;
+  border: 2px solid #1e221d;
+  border-radius: 0;
+  background: #fffdf7;
+  color: #181a17;
+  box-shadow: 4px 4px 0 #181a17;
+  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 900;
+  line-height: 1.15;
+  white-space: normal;
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.store-page .store-button-full {
+  width: 100%;
+  min-height: 48px;
+}
+
+.store-page .store-button-compact {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.store-page .store-button-primary {
+  background: #06613f;
+  color: #fffdf7;
+}
+
+.store-page .store-button:not(:disabled):not([disabled]):hover,
+.store-page .store-button:not(:disabled):not([disabled]):focus-visible {
+  border-color: #1e221d;
+  background: #f0c84b;
+  color: #181a17;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #181a17;
+}
+
+.store-page .store-button-primary:not(:disabled):not([disabled]):hover,
+.store-page .store-button-primary:not(:disabled):not([disabled]):focus-visible {
+  background: #064d33;
+  color: #fffdf7;
+}
+
+.store-page .store-button:disabled,
+.store-page .store-button[disabled] {
+  border-color: #8f938a;
+  background: #e8e2d6;
+  color: #777b72;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .store-ad-slot {
   position: relative;
   min-height: clamp(188px, 22vw, 260px);

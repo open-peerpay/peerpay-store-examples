@@ -950,7 +950,7 @@ function Storefront() {
           <div className="store-panel product-board">
             <div className="store-panel-header">
               <h2>商品</h2>
-              <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>刷新</Button>
+              <Button className="store-button store-button-compact" icon={<ReloadOutlined />} onClick={refresh} loading={loading}>刷新</Button>
             </div>
             <div className="product-grid">
               {products.map((product) => (
@@ -1095,7 +1095,7 @@ function ProductModal({ product, onClose, onOrdered }: { product: PublicProduct 
               <Form.Item name="contactValue" label="联系方式" extra="可填写 QQ、手机号码或者邮箱，用于查询历史订单。" rules={[{ required: true }]}>
                 <Input size="large" placeholder="QQ / 手机号码 / 邮箱" />
               </Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} block disabled={!product.available} icon={<ShoppingCartOutlined />}>
+              <Button className="store-button store-button-primary store-button-full" htmlType="submit" loading={loading} block disabled={!product.available} icon={<ShoppingCartOutlined />}>
                 {product.available ? "提交订单并付款" : "暂时无货"}
               </Button>
             </Form>
@@ -1167,7 +1167,7 @@ function OrderDetails({ order, publicView = false }: { order: Order; publicView?
             <strong>订单已创建，等待付款</strong>
             <span>PeerPay 应付金额：¥{order.peerpayActualAmount ?? order.amount}</span>
           </div>
-          <Button type="primary" href={order.peerpayPayUrl}>继续付款</Button>
+          <Button className={publicView ? "store-button store-button-primary" : undefined} type={publicView ? undefined : "primary"} href={order.peerpayPayUrl}>继续付款</Button>
         </section>
       )}
       {order.deliveryPayload && (
@@ -1183,7 +1183,7 @@ function OrderDetails({ order, publicView = false }: { order: Order; publicView?
         </section>
       )}
       {order.pickupUrl && order.pickupOpenMode === "new_tab" && (
-        <Button type="primary" href={order.pickupUrl} target="_blank">打开提货网站</Button>
+        <Button className={publicView ? "store-button store-button-primary" : undefined} type={publicView ? undefined : "primary"} href={order.pickupUrl} target="_blank">打开提货网站</Button>
       )}
       {order.pickupUrl && order.pickupOpenMode === "iframe" && (
         <iframe className="pickup-frame" src={order.pickupUrl} title="自助提货" />
@@ -1198,7 +1198,7 @@ function OrderSearch({ searching, onSearch }: { searching: boolean; onSearch: (c
       <Form.Item name="contact" label="联系方式" extra="可填写 QQ、手机号码或者邮箱。">
         <Input placeholder="QQ / 手机号码 / 邮箱" />
       </Form.Item>
-      <Button htmlType="submit" icon={<SearchOutlined />} loading={searching}>查询历史订单</Button>
+      <Button className="store-button store-button-full" htmlType="submit" icon={<SearchOutlined />} loading={searching}>查询历史订单</Button>
     </Form>
   );
 }
