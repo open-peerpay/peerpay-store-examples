@@ -496,29 +496,47 @@ body {
 
 .store-ad-slot {
   position: relative;
-  min-height: 142px;
+  min-height: clamp(188px, 22vw, 260px);
   margin: 0 0 22px;
   border: 2px solid #1e221d;
-  background: #fffdf7;
+  background:
+    linear-gradient(90deg, rgba(255, 253, 247, 0.99), rgba(255, 253, 247, 0.88)),
+    #fffdf7;
   box-shadow: 8px 8px 0 #181a17;
   overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.store-ad-slot-with-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, #fffdf7 0%, rgba(255, 253, 247, 0.98) 38%, rgba(255, 253, 247, 0.76) 58%, rgba(255, 253, 247, 0.18) 100%);
+  pointer-events: none;
 }
 
 .store-ad-link {
   min-width: 0;
+  min-height: inherit;
+  position: relative;
+  z-index: 2;
   color: inherit;
   text-decoration: none;
   display: block;
 }
 
 .store-ad-copy {
-  min-height: 142px;
-  padding: 20px 22px;
+  width: min(62%, 720px);
+  min-height: inherit;
+  padding: 24px clamp(22px, 3vw, 36px);
   display: grid;
   align-content: center;
   gap: 6px;
+}
+
+.store-ad-slot:not(.store-ad-slot-with-image) .store-ad-copy {
+  width: min(100%, 820px);
 }
 
 .store-ad-kicker {
@@ -556,18 +574,21 @@ body {
 }
 
 .store-ad-image {
-  width: clamp(360px, 34vw, 520px);
-  aspect-ratio: 16 / 9;
-  align-self: center;
-  border-left: 2px solid #1e221d;
-  background-color: #f7f0df;
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 0;
+  width: min(64%, 760px);
+  height: 100%;
+  background-color: transparent;
   background-size: contain;
-  background-position: center;
+  background-position: center right;
   background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 .store-ad-dots {
   position: absolute;
+  z-index: 3;
   right: 14px;
   bottom: 12px;
   display: flex;
@@ -820,13 +841,32 @@ body {
   }
 
   .store-ad-slot {
+    display: grid;
     grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .store-ad-slot-with-image::after {
+    display: none;
+  }
+
+  .store-ad-copy {
+    width: 100%;
+    min-height: auto;
+    padding: 20px;
+  }
+
+  .store-ad-link {
+    min-height: auto;
   }
 
   .store-ad-image {
+    position: relative;
+    inset: auto;
+    z-index: 0;
     width: 100%;
-    min-height: 0;
-    border-left: 0;
+    height: auto;
+    aspect-ratio: 16 / 9;
     border-top: 2px solid #1e221d;
     order: 2;
   }

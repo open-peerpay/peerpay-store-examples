@@ -1026,13 +1026,13 @@ function AdRotator({ ads, activeIndex, onSelect }: { ads: StoreAd[]; activeIndex
   );
 
   return (
-    <section className="store-ad-slot">
-      {active.imageUrl && <div className="store-ad-image" style={{ backgroundImage: `url(${active.imageUrl})` }} />}
+    <section className={active.imageUrl ? "store-ad-slot store-ad-slot-with-image" : "store-ad-slot"}>
       {active.linkUrl ? (
         <a className="store-ad-link" href={active.linkUrl} target="_blank" rel="noreferrer">{content}</a>
       ) : (
         <div className="store-ad-link">{content}</div>
       )}
+      {active.imageUrl && <div className="store-ad-image" style={{ backgroundImage: `url(${active.imageUrl})` }} />}
       {activeAds.length > 1 && (
         <div className="store-ad-dots">
           {activeAds.map((ad, index) => (
