@@ -1016,10 +1016,23 @@ function Storefront() {
                     setSelected(fresh ?? product);
                   }}
                 >
-                  <ProductVisual product={product} />
-                  <span className="product-card-title">{product.title}</span>
-                  <span className="product-card-meta">¥{product.price}</span>
-                  <StatusTag value={product.available ? "active" : "archived"} text={product.available ? "有货" : product.availabilityReason ?? "无货"} />
+                  <span className="product-card-media">
+                    <ProductVisual product={product} card />
+                    <span className="product-card-stock">
+                      {product.available ? "可购买" : product.availabilityReason ?? "暂不可购"}
+                    </span>
+                  </span>
+                  <span className="product-card-body">
+                    <span className="product-card-title">{product.title}</span>
+                    {product.description && <span className="product-card-desc">{product.description}</span>}
+                    <span className="product-card-footer">
+                      <span className="product-card-meta">¥{product.price}</span>
+                      <span className="product-card-tags">
+                        <StatusTag value={product.available ? "active" : "archived"} text={product.available ? "有货" : product.availabilityReason ?? "无货"} />
+                        <StatusTag value={product.deliveryMode} text={DELIVERY_MODE_LABELS[product.deliveryMode]} />
+                      </span>
+                    </span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -1343,10 +1356,11 @@ function ProductTitle({ product }: { product: Product }) {
   );
 }
 
-function ProductVisual({ product, large = false }: { product: Product | PublicProduct; large?: boolean }) {
+function ProductVisual({ product, large = false, card = false }: { product: Product | PublicProduct; large?: boolean; card?: boolean }) {
   const style = product.coverUrl ? { backgroundImage: `url(${product.coverUrl})` } : undefined;
+  const className = card ? "product-visual product-visual-card" : large ? "product-visual product-visual-large" : "product-visual";
   return (
-    <span className={large ? "product-visual product-visual-large" : "product-visual"} style={style}>
+    <span className={className} style={style}>
       {!product.coverUrl && <ShopOutlined />}
     </span>
   );
