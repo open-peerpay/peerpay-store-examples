@@ -268,8 +268,10 @@ body {
   display: grid;
   place-items: center;
   border-bottom: 2px solid #1e221d;
-  background-size: cover;
+  background-color: #f7f0df;
+  background-size: contain;
   background-position: center;
+  background-repeat: no-repeat;
 }
 
 .ad-preview-empty {
@@ -554,11 +556,14 @@ body {
 }
 
 .store-ad-image {
-  width: 220px;
-  min-height: 142px;
+  width: clamp(360px, 34vw, 520px);
+  aspect-ratio: 16 / 9;
+  align-self: center;
   border-left: 2px solid #1e221d;
-  background-size: cover;
+  background-color: #f7f0df;
+  background-size: contain;
   background-position: center;
+  background-repeat: no-repeat;
 }
 
 .store-ad-dots {
@@ -820,7 +825,7 @@ body {
 
   .store-ad-image {
     width: 100%;
-    min-height: 180px;
+    min-height: 0;
     border-left: 0;
     border-top: 2px solid #1e221d;
     order: 2;
