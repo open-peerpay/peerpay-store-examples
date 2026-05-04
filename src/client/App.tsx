@@ -281,7 +281,6 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
             <Button className="mobile-menu-button" icon={<MenuOutlined />} onClick={() => setMobileMenuOpen(true)} />
             <div>
               <Title level={3}>{viewTitles[view]}</Title>
-              <Text type="secondary">PeerPay Store 开源一口价店铺</Text>
             </div>
           </div>
           <Space wrap className="app-toolbar">
