@@ -8,6 +8,7 @@
     "start": "bun run server/index.ts",
     "build": "bun build --target=bun --production --root . --outdir=dist ./server/index.ts",
     "build:bin": "bun build --compile --target=bun-linux-x64 --production --outfile=dist/peerpay-store ./server/index.ts",
+    "publish": "bun run scripts/publish.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "antd:lint": "antd lint src/client --format json"

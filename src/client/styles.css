@@ -84,6 +84,7 @@ body {
   min-height: 72px;
   padding: 14px 24px;
   border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: space-between;

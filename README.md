@@ -137,4 +137,8 @@ bun run dev        # 开发服务
 bun test           # 单元测试
 bun run typecheck  # TypeScript 检查
 bun run build      # 生产构建
+bun run build:bin  # 构建 Linux x64 单文件可执行程序
+bun run publish root@your-server  # 编译并发布到 /home/peerpay-store
 ```
+
+`publish` 会参考 PeerPay 后端的部署方式：编译 `dist/peerpay-store`，上传到远端 `/home/peerpay-store/peerpay-store`，并在远端不存在 `ecosystem.config.js` 时上传 PM2 配置。生产环境需要在服务器上准备环境变量，例如 `PEERPAY_BASE_URL`、`STORE_BASE_URL`、`ADMIN_PATH` 和 `DATABASE_URL`。
