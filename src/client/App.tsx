@@ -131,6 +131,9 @@ const viewTitles: Record<ViewKey, string> = {
   logs: "系统日志"
 };
 
+const ADMIN_VIEW_STORAGE_KEY = "peerpay-store:admin-view:v1";
+const ADMIN_VIEW_KEYS = new Set<ViewKey>(Object.keys(viewTitles) as ViewKey[]);
+
 const statusColor: Record<string, string> = {
   pending_payment: "gold",
   active: "success",
@@ -238,9 +241,29 @@ function AuthPage({ setupRequired, onDone }: { setupRequired: boolean; onDone: (
   );
 }
 
+function toViewKey(value: unknown): ViewKey | null {
+  return typeof value === "string" && ADMIN_VIEW_KEYS.has(value as ViewKey) ? value as ViewKey : null;
+}
+
+function readRememberedAdminView(): ViewKey {
+  try {
+    return toViewKey(window.localStorage.getItem(ADMIN_VIEW_STORAGE_KEY)) ?? "dashboard";
+  } catch {
+    return "dashboard";
+  }
+}
+
+function rememberAdminView(view: ViewKey) {
+  try {
+    window.localStorage.setItem(ADMIN_VIEW_STORAGE_KEY, view);
+  } catch {
+    // localStorage can be unavailable in private or restricted browser contexts.
+  }
+}
+
 function AdminShell({ onLogout }: { onLogout: () => void }) {
   const { message } = AntApp.useApp();
-  const [view, setView] = useState<ViewKey>("dashboard");
+  const [view, setView] = useState<ViewKey>(readRememberedAdminView);
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [loading, setLoading] = useState(false);
   const [productDrawer, setProductDrawer] = useState<Product | "new" | null>(null);
@@ -262,6 +285,12 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
     void refresh();
   }, [refresh]);
 
+  const selectView = useCallback((nextView: ViewKey) => {
+    setView(nextView);
+    rememberAdminView(nextView);
+    setMobileMenuOpen(false);
+  }, []);
+
   const menu = (
     <>
       <Brand />
@@ -270,8 +299,10 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
         selectedKeys={[view]}
         items={menuItems}
         onClick={(item) => {
-          setView(item.key as ViewKey);
-          setMobileMenuOpen(false);
+          const nextView = toViewKey(item.key);
+          if (nextView) {
+            selectView(nextView);
+          }
         }}
       />
     </>
