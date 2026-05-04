@@ -1120,6 +1120,7 @@ function normalizeStoreAds(value: StoreAd[]) {
     .map((item) => ({
       title: item.title?.trim() ?? "",
       body: item.body?.trim() || undefined,
+      gradientColor: normalizeHexColor(item.gradientColor),
       imageUrl: blankToNull(item.imageUrl),
       linkUrl: blankToNull(item.linkUrl),
       linkText: item.linkText?.trim() || undefined
@@ -1146,6 +1147,11 @@ function normalizeSlug(value: string) {
 function blankToNull(value: string | null | undefined) {
   const text = value?.trim();
   return text ? text : null;
+}
+
+function normalizeHexColor(value: string | null | undefined) {
+  const text = value?.trim();
+  return text && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(text) ? text : null;
 }
 
 function parseJson<T>(text: string | null, fallback: T): T {

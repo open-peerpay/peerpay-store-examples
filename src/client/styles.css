@@ -232,7 +232,7 @@ body {
 
 .ad-editor-card {
   display: grid;
-  grid-template-columns: minmax(260px, 0.38fr) minmax(0, 1fr);
+  grid-template-columns: minmax(320px, 0.45fr) minmax(0, 1fr);
   gap: 16px;
   align-items: stretch;
   border: 1px solid #d8dee8;
@@ -254,21 +254,60 @@ body {
   gap: 12px;
 }
 
-.ad-preview-frame {
-  min-height: 260px;
+.ad-preview-set {
   display: grid;
-  grid-template-rows: 150px minmax(0, 1fr);
+  align-content: start;
+  gap: 14px;
+}
+
+.ad-preview-block {
+  display: grid;
+  gap: 8px;
+}
+
+.ad-preview-label {
+  width: fit-content;
+  border: 2px solid #1e221d;
+  background: #f0c84b;
+  padding: 2px 8px;
+  color: #181a17;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 900;
+}
+
+.ad-preview-frame {
+  min-height: 190px;
+  display: grid;
   overflow: hidden;
   border: 2px solid #1e221d;
-  background: #fffdf7;
+  background: linear-gradient(
+    90deg,
+    var(--ad-gradient-start, #fffdf7) 0%,
+    var(--ad-gradient-color, #f0c84b) 56%,
+    var(--ad-gradient-color, #f0c84b) 100%
+  );
   box-shadow: 6px 6px 0 #181a17;
+}
+
+.ad-preview-frame-pc {
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.9fr);
+}
+
+.ad-preview-frame-mobile {
+  min-height: 270px;
+  grid-template-rows: 140px minmax(0, 1fr);
+}
+
+.color-input {
+  max-width: 120px;
+  padding: 4px;
 }
 
 .ad-preview-image {
   display: grid;
   place-items: center;
-  border-bottom: 2px solid #1e221d;
-  background-color: #f7f0df;
+  background-color: var(--ad-gradient-color, #f0c84b);
   background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
@@ -602,21 +641,23 @@ body {
   min-height: clamp(188px, 22vw, 260px);
   margin: 0 0 22px;
   border: 2px solid #1e221d;
-  background:
-    linear-gradient(90deg, rgba(255, 253, 247, 0.99), rgba(255, 253, 247, 0.88)),
-    #fffdf7;
+  background: linear-gradient(
+    90deg,
+    var(--ad-gradient-start, #fffdf7) 0%,
+    var(--ad-gradient-color, #f0c84b) 58%,
+    var(--ad-gradient-color, #f0c84b) 100%
+  );
   box-shadow: 8px 8px 0 #181a17;
+  display: grid;
   overflow: hidden;
 }
 
+.store-ad-slot-with-image {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.82fr);
+}
+
 .store-ad-slot-with-image::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background:
-    linear-gradient(90deg, #fffdf7 0%, rgba(255, 253, 247, 0.98) 38%, rgba(255, 253, 247, 0.76) 58%, rgba(255, 253, 247, 0.18) 100%);
-  pointer-events: none;
+  display: none;
 }
 
 .store-ad-link {
@@ -630,7 +671,8 @@ body {
 }
 
 .store-ad-copy {
-  width: min(62%, 720px);
+  position: relative;
+  width: 100%;
   min-height: inherit;
   padding: 24px clamp(22px, 3vw, 36px);
   display: grid;
@@ -640,6 +682,7 @@ body {
 
 .store-ad-slot:not(.store-ad-slot-with-image) .store-ad-copy {
   width: min(100%, 820px);
+  background: transparent;
 }
 
 .store-ad-kicker {
@@ -677,14 +720,13 @@ body {
 }
 
 .store-ad-image {
-  position: absolute;
-  inset: 0 0 0 auto;
-  z-index: 0;
-  width: min(64%, 760px);
+  position: relative;
+  width: 100%;
   height: 100%;
-  background-color: transparent;
+  min-height: inherit;
+  background-color: var(--ad-gradient-color, #f0c84b);
   background-size: contain;
-  background-position: center right;
+  background-position: center;
   background-repeat: no-repeat;
   pointer-events: none;
 }
@@ -970,8 +1012,8 @@ body {
     width: 100%;
     height: auto;
     aspect-ratio: 16 / 9;
-    border-top: 2px solid #1e221d;
-    order: 2;
+    border-left: 0;
+    order: -1;
   }
 }
 

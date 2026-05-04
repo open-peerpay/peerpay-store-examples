@@ -119,6 +119,7 @@ export interface SystemLog {
 export interface StoreAd {
   title: string;
   body?: string;
+  gradientColor?: string | null;
   imageUrl?: string | null;
   linkUrl?: string | null;
   linkText?: string;

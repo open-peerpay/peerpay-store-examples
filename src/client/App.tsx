@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   App as AntApp,
   Button,
@@ -147,6 +147,14 @@ const statusColor: Record<string, string> = {
   info: "blue",
   warn: "gold",
   error: "red"
+};
+
+const AD_GRADIENT_START_COLOR = "#fffdf7";
+const DEFAULT_AD_GRADIENT_COLOR = "#f0c84b";
+const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+type AdGradientStyle = CSSProperties & {
+  "--ad-gradient-start": string;
+  "--ad-gradient-color": string;
 };
 
 function App() {
@@ -597,6 +605,9 @@ function AdSettingsView({ settings, onSaved }: { settings: StoreSettings; onSave
                         <Input placeholder="立即查看" />
                       </Form.Item>
                     </div>
+                    <Form.Item {...field} name={[field.name, "gradientColor"]} label="右侧渐变色" extra="广告背景会从左侧纸色渐变到这个颜色。">
+                      <Input className="color-input" placeholder="#f0c84b" />
+                    </Form.Item>
                     <Form.Item {...field} name={[field.name, "body"]} label="广告描述">
                       <TextArea rows={3} placeholder="自动发货商品已补充库存" />
                     </Form.Item>
@@ -688,19 +699,42 @@ function NotificationSettingsView({ settings, onSaved }: { settings: StoreSettin
 }
 
 function AdPreview({ ad, index }: { ad?: StoreAd; index: number }) {
+  const style = adGradientStyle(ad?.gradientColor);
   return (
-    <div className="ad-preview-frame">
-      {ad?.imageUrl ? (
-        <div className="ad-preview-image" style={{ backgroundImage: `url(${ad.imageUrl})` }} />
-      ) : (
-        <div className="ad-preview-image ad-preview-empty"><PictureOutlined /></div>
-      )}
-      <div className="ad-preview-copy">
-        <span>广告 {index + 1}</span>
-        <strong>{ad?.title || "广告标题"}</strong>
-        <p>{ad?.body || "广告描述会显示在这里，用于首页轮播。"}</p>
-        <em>{ad?.linkText || "点击文案"}</em>
+    <div className="ad-preview-set">
+      <div className="ad-preview-block">
+        <span className="ad-preview-label">PC 端</span>
+        <div className="ad-preview-frame ad-preview-frame-pc" style={style}>
+          <AdPreviewCopy ad={ad} index={index} />
+          <AdPreviewImage ad={ad} />
+        </div>
       </div>
+      <div className="ad-preview-block">
+        <span className="ad-preview-label">移动端</span>
+        <div className="ad-preview-frame ad-preview-frame-mobile" style={style}>
+          <AdPreviewImage ad={ad} />
+          <AdPreviewCopy ad={ad} index={index} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdPreviewImage({ ad }: { ad?: StoreAd }) {
+  return ad?.imageUrl ? (
+    <div className="ad-preview-image" style={{ backgroundImage: `url(${ad.imageUrl})` }} />
+  ) : (
+    <div className="ad-preview-image ad-preview-empty"><PictureOutlined /></div>
+  );
+}
+
+function AdPreviewCopy({ ad, index }: { ad?: StoreAd; index: number }) {
+  return (
+    <div className="ad-preview-copy">
+      <span>广告 {index + 1}</span>
+      <strong>{ad?.title || "广告标题"}</strong>
+      <p>{ad?.body || "广告描述会显示在这里，用于首页轮播。"}</p>
+      <em>{ad?.linkText || "点击文案"}</em>
     </div>
   );
 }
@@ -1016,6 +1050,7 @@ function AdRotator({ ads, activeIndex, onSelect }: { ads: StoreAd[]; activeIndex
     return null;
   }
   const active = activeAds[activeIndex % activeAds.length] ?? activeAds[0];
+  const style = adGradientStyle(active.gradientColor);
   const content = (
     <div className="store-ad-copy">
       <span className="store-ad-kicker">精选</span>
@@ -1026,7 +1061,7 @@ function AdRotator({ ads, activeIndex, onSelect }: { ads: StoreAd[]; activeIndex
   );
 
   return (
-    <section className={active.imageUrl ? "store-ad-slot store-ad-slot-with-image" : "store-ad-slot"}>
+    <section className={active.imageUrl ? "store-ad-slot store-ad-slot-with-image" : "store-ad-slot"} style={style}>
       {active.linkUrl ? (
         <a className="store-ad-link" href={active.linkUrl} target="_blank" rel="noreferrer">{content}</a>
       ) : (
@@ -1313,6 +1348,7 @@ function normalizeAdsForm(values: unknown) {
     .map((item) => ({
       title: String(item.title ?? "").trim(),
       body: String(item.body ?? "").trim() || undefined,
+      gradientColor: normalizeHexColor(String(item.gradientColor ?? "")),
       imageUrl: String(item.imageUrl ?? "").trim() || null,
       linkUrl: String(item.linkUrl ?? "").trim() || null,
       linkText: String(item.linkText ?? "").trim() || undefined
@@ -1321,7 +1357,19 @@ function normalizeAdsForm(values: unknown) {
 }
 
 function emptyAd(): StoreAd {
-  return { title: "", body: "", imageUrl: null, linkUrl: "", linkText: "查看详情" };
+  return { title: "", body: "", gradientColor: "#f0c84b", imageUrl: null, linkUrl: "", linkText: "查看详情" };
+}
+
+function normalizeHexColor(value: string) {
+  const text = value.trim();
+  return HEX_COLOR_PATTERN.test(text) ? text : null;
+}
+
+function adGradientStyle(value: string | null | undefined): AdGradientStyle {
+  return {
+    "--ad-gradient-start": AD_GRADIENT_START_COLOR,
+    "--ad-gradient-color": normalizeHexColor(value ?? "") ?? DEFAULT_AD_GRADIENT_COLOR
+  };
 }
 
 function statusOptions<T extends string>(record: Record<T, string>) {
