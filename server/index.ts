@@ -9,7 +9,10 @@ export function startServer() {
   const adminPath = normalizeAdminPath(Bun.env.ADMIN_PATH ?? "/admin");
   const server = Bun.serve({
     port,
-    development: Bun.env.NODE_ENV !== "production",
+    development: Bun.env.NODE_ENV === "production" ? false : {
+      hmr: true,
+      console: true
+    },
     routes: {
       "/": app as never,
       "/orders": app as never,

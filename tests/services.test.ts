@@ -33,18 +33,22 @@ describe("store services", () => {
       ctx.db.query("INSERT INTO app_settings(key, value, updated_at) VALUES ('peerpay_base_url', ?, ?)").run("http://peerpay.test", new Date().toISOString());
       const result = await createOrder(ctx, {
         slug: "test-card",
-        contactValue: "13800138000"
+        contactValue: "13800138000",
+        paymentChannel: "wechat",
+        remark: "请优先自动发货，异常时联系我"
       }, "http://store.test/api/public/orders");
 
       expect(result.order.status).toBe("pending_payment");
       expect(result.paymentUrl).toContain("/pay/");
+      expect(result.order.peerpayPaymentChannel).toBe("wechat");
+      expect(result.order.remark).toBe("请优先自动发货，异常时联系我");
 
       const secret = ctx.db.query("SELECT peerpay_callback_secret AS secret FROM orders WHERE id = ?").get(result.order.id) as { secret: string };
       const payload = {
         orderId: result.order.peerpayOrderId!,
         merchantOrderId: result.order.id,
-        paymentAccountCode: "alipay-a",
-        paymentChannel: "alipay" as const,
+        paymentAccountCode: "wechat-a",
+        paymentChannel: "wechat" as const,
         status: "paid",
         requestedAmount: "9.90",
         actualAmount: "9.90",
@@ -78,8 +82,25 @@ describe("store services", () => {
 
     await expect(createOrder(ctx, {
       slug: "dynamic",
-      contactValue: "123456"
+      contactValue: "123456",
+      paymentChannel: "alipay"
     })).rejects.toThrow("预检测请求未配置");
+  });
+
+  test("requires a payment channel when creating an order", async () => {
+    const ctx = createTestContext();
+    createProduct(ctx, {
+      title: "必选支付方式商品",
+      slug: "payment-required",
+      price: "6.00",
+      status: "active",
+      deliveryMode: "manual"
+    });
+
+    await expect(createOrder(ctx, {
+      slug: "payment-required",
+      contactValue: "buyer"
+    } as Parameters<typeof createOrder>[1])).rejects.toThrow("请选择支付方式");
   });
 
   test("reads PeerPay integration settings from SQLite instead of environment variables", () => {

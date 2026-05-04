@@ -61,6 +61,7 @@ function migrate(db: Database) {
       amount_cents INTEGER NOT NULL,
       contact_type TEXT NOT NULL DEFAULT 'contact',
       contact_value TEXT NOT NULL,
+      remark TEXT,
       status TEXT NOT NULL CHECK (status IN ('pending_payment', 'paid', 'delivered', 'needs_manual', 'failed', 'cancelled')),
       peerpay_order_id TEXT,
       peerpay_pay_url TEXT,
@@ -113,6 +114,7 @@ function migrate(db: Database) {
   ensureColumn(db, "orders", "peerpay_actual_amount_cents", "ALTER TABLE orders ADD COLUMN peerpay_actual_amount_cents INTEGER");
   ensureColumn(db, "orders", "peerpay_payment_channel", "ALTER TABLE orders ADD COLUMN peerpay_payment_channel TEXT");
   ensureColumn(db, "orders", "peerpay_callback_secret", "ALTER TABLE orders ADD COLUMN peerpay_callback_secret TEXT");
+  ensureColumn(db, "orders", "remark", "ALTER TABLE orders ADD COLUMN remark TEXT");
 }
 
 function rebuildOrdersTableIfNeeded(db: Database) {
@@ -131,6 +133,7 @@ function rebuildOrdersTableIfNeeded(db: Database) {
       amount_cents INTEGER NOT NULL,
       contact_type TEXT NOT NULL DEFAULT 'contact',
       contact_value TEXT NOT NULL,
+      remark TEXT,
       status TEXT NOT NULL CHECK (status IN ('pending_payment', 'paid', 'delivered', 'needs_manual', 'failed', 'cancelled')),
       peerpay_order_id TEXT,
       peerpay_pay_url TEXT,

@@ -1,4 +1,4 @@
-import type { ContactType, DeliveryMode, OrderStatus, PickupOpenMode, ProductStatus } from "./types";
+import type { ContactType, DeliveryMode, OrderStatus, PaymentChannel, PickupOpenMode, ProductStatus } from "./types";
 
 export const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
   contact: "联系方式",
@@ -11,6 +11,11 @@ export const CONTACT_TYPE_OPTIONS = Object.entries(CONTACT_TYPE_LABELS).map(([va
   value: value as ContactType,
   label
 }));
+
+export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
+  alipay: "支付宝",
+  wechat: "微信"
+};
 
 export const DELIVERY_MODE_LABELS: Record<DeliveryMode, string> = {
   card: "卡密自动发货",

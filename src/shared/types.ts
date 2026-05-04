@@ -88,6 +88,7 @@ export interface Order {
   amountCents: number;
   contactType: ContactType;
   contactValue: string;
+  remark: string | null;
   status: OrderStatus;
   peerpayOrderId: string | null;
   peerpayPayUrl: string | null;
@@ -184,6 +185,8 @@ export interface CreateOrderInput {
   slug?: string;
   contactType?: ContactType;
   contactValue: string;
+  paymentChannel: PaymentChannel;
+  remark?: string;
 }
 
 export interface CreateOrderResult {

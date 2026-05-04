@@ -9,6 +9,7 @@ import {
   InputNumber,
   Layout,
   Menu,
+  Radio,
   Select,
   Space,
   Statistic,
@@ -20,6 +21,7 @@ import {
 } from "antd";
 import type { MenuProps, TableProps } from "antd";
 import {
+  AlipayCircleOutlined,
   AppstoreOutlined,
   ArrowDownOutlined,
   ArrowUpOutlined,
@@ -31,6 +33,7 @@ import {
   LinkOutlined,
   LockOutlined,
   MenuOutlined,
+  MessageOutlined,
   NotificationOutlined,
   PictureOutlined,
   PlusOutlined,
@@ -39,12 +42,14 @@ import {
   SettingOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
-  UploadOutlined
+  UploadOutlined,
+  WechatOutlined
 } from "@ant-design/icons";
 import {
   DEFAULT_UPSTREAM_CONFIG_EXAMPLE,
   DELIVERY_MODE_LABELS,
   ORDER_STATUS_LABELS,
+  PAYMENT_CHANNEL_LABELS,
   PICKUP_OPEN_MODE_LABELS,
   PRODUCT_STATUS_LABELS
 } from "../shared/constants";
@@ -467,6 +472,8 @@ function OrdersView({ orders, loading, onChange }: { orders: Order[]; loading: b
     { title: "订单号", dataIndex: "id", width: 190, render: (value) => <Text copyable>{value}</Text> },
     { title: "商品", dataIndex: "productTitle", render: (value, item) => <div><strong>{value}</strong><br /><Text type="secondary">¥{item.amount}</Text></div> },
     { title: "联系方式", dataIndex: "contactValue" },
+    { title: "支付", dataIndex: "peerpayPaymentChannel", width: 100, render: renderPaymentChannel },
+    { title: "备注", dataIndex: "remark", width: 220, ellipsis: true, render: (value: string | null) => value || <Text type="secondary">-</Text> },
     { title: "状态", dataIndex: "status", width: 120, render: (value) => <StatusTag value={value} text={ORDER_STATUS_LABELS[value as keyof typeof ORDER_STATUS_LABELS]} /> },
     { title: "时间", dataIndex: "createdAt", width: 180, render: formatDate },
     {
@@ -502,7 +509,7 @@ function OrdersView({ orders, loading, onChange }: { orders: Order[]; loading: b
         columns={columns}
         dataSource={orders}
         pagination={false}
-        scroll={{ x: 1080 }}
+        scroll={{ x: 1360 }}
         expandable={{ expandedRowRender: (order) => <OrderDetails order={order} /> }}
       />
     </section>
@@ -1063,6 +1070,7 @@ function Storefront() {
 
       <ProductModal
         product={selected}
+        defaultPaymentChannel={settings.peerpayPaymentChannel}
         onClose={() => setSelected(null)}
         onOrdered={(created) => {
           setSelected(null);
@@ -1115,10 +1123,26 @@ function AdRotator({ ads, activeIndex, onSelect }: { ads: StoreAd[]; activeIndex
   );
 }
 
-function ProductModal({ product, onClose, onOrdered }: { product: PublicProduct | null; onClose: () => void; onOrdered: (order: Order) => void }) {
+function ProductModal({
+  product,
+  defaultPaymentChannel,
+  onClose,
+  onOrdered
+}: {
+  product: PublicProduct | null;
+  defaultPaymentChannel: PaymentChannel;
+  onClose: () => void;
+  onOrdered: (order: Order) => void;
+}) {
   const { message } = AntApp.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (product) {
+      form.setFieldValue("paymentChannel", defaultPaymentChannel);
+    }
+  }, [defaultPaymentChannel, form, product]);
 
   return (
     <StoreDialog open={Boolean(product)} onClose={onClose} labelledBy="product-dialog-title">
@@ -1144,7 +1168,12 @@ function ProductModal({ product, onClose, onOrdered }: { product: PublicProduct 
               onFinish={async (values) => {
                 setLoading(true);
                 try {
-                  const result = await createPublicOrder({ slug: product.slug, contactValue: values.contactValue });
+                  const result = await createPublicOrder({
+                    slug: product.slug,
+                    contactValue: values.contactValue,
+                    paymentChannel: values.paymentChannel,
+                    remark: values.remark
+                  });
                   await rememberOrder(result.order.id);
                   if (result.paymentUrl) {
                     window.location.assign(result.paymentUrl);
@@ -1160,6 +1189,21 @@ function ProductModal({ product, onClose, onOrdered }: { product: PublicProduct 
             >
               <Form.Item name="contactValue" label="联系方式" extra="可填写 QQ、手机号码或者邮箱，用于查询历史订单。" rules={[{ required: true }]}>
                 <Input size="large" placeholder="QQ / 手机号码 / 邮箱" />
+              </Form.Item>
+              <Form.Item name="paymentChannel" label="支付方式" rules={[{ required: true, message: "请选择支付方式" }]}>
+                <Radio.Group className="payment-channel-picker">
+                  <Radio.Button value="alipay">
+                    <AlipayCircleOutlined />
+                    <span>{PAYMENT_CHANNEL_LABELS.alipay}</span>
+                  </Radio.Button>
+                  <Radio.Button value="wechat">
+                    <WechatOutlined />
+                    <span>{PAYMENT_CHANNEL_LABELS.wechat}</span>
+                  </Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+              <Form.Item name="remark" label="备注" extra="可填写发货偏好、人工处理说明或其他需要核对的信息。" rules={[{ max: 500, message: "备注不能超过 500 字" }]}>
+                <TextArea rows={3} maxLength={500} showCount placeholder="选填，最多 500 字" />
               </Form.Item>
               <Button className="store-button store-button-primary store-button-full" htmlType="submit" loading={loading} block disabled={!product.available} icon={<ShoppingCartOutlined />}>
                 {product.available ? "提交订单并付款" : "暂时无货"}
@@ -1223,6 +1267,8 @@ function OrderDetails({ order, publicView = false }: { order: Order; publicView?
       <div className="settings-grid">
         <InfoCell label="商品" value={order.productTitle} />
         <InfoCell label="金额" value={`¥${order.amount}`} />
+        <InfoCell label="联系方式" value={order.contactValue} />
+        <InfoCell label="支付方式" value={paymentChannelText(order.peerpayPaymentChannel)} />
         <InfoCell label="状态" value={ORDER_STATUS_LABELS[order.status]} />
         <InfoCell label="下单时间" value={formatDate(order.createdAt)} />
       </div>
@@ -1232,8 +1278,15 @@ function OrderDetails({ order, publicView = false }: { order: Order; publicView?
           <div>
             <strong>订单已创建，等待付款</strong>
             <span>PeerPay 应付金额：¥{order.peerpayActualAmount ?? order.amount}</span>
+            <span>支付方式：{paymentChannelText(order.peerpayPaymentChannel)}</span>
           </div>
           <Button className={publicView ? "store-button store-button-primary" : undefined} type={publicView ? undefined : "primary"} href={order.peerpayPayUrl}>继续付款</Button>
+        </section>
+      )}
+      {order.remark && (
+        <section className="remark-box">
+          <MessageOutlined />
+          <span>{order.remark}</span>
         </section>
       )}
       {order.deliveryPayload && (
@@ -1319,6 +1372,14 @@ function ProductVisual({ product, large = false }: { product: Product | PublicPr
 
 function StatusTag({ value, text }: { value: string; text: string }) {
   return <Tag color={statusColor[value] ?? "default"}>{text}</Tag>;
+}
+
+function renderPaymentChannel(value: PaymentChannel | null) {
+  return value ? <Tag>{PAYMENT_CHANNEL_LABELS[value]}</Tag> : <Text type="secondary">-</Text>;
+}
+
+function paymentChannelText(value: PaymentChannel | null) {
+  return value ? PAYMENT_CHANNEL_LABELS[value] : "-";
 }
 
 function InfoCell({ label, value }: { label: string; value: string | number }) {

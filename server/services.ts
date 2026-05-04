@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Database } from "bun:sqlite";
 import { createDatabase } from "./db";
-import { DEFAULT_LOOKUP_METHODS } from "../src/shared/constants";
+import { DEFAULT_LOOKUP_METHODS, PAYMENT_CHANNEL_LABELS } from "../src/shared/constants";
 import type {
   AddCardsInput,
   ContactType,
@@ -65,6 +65,7 @@ interface OrderRow {
   amount_cents: number;
   contact_type: ContactType;
   contact_value: string;
+  remark: string | null;
   status: OrderStatus;
   peerpay_order_id: string | null;
   peerpay_pay_url: string | null;
@@ -450,12 +451,14 @@ export async function createOrder(ctx: AppContext, input: CreateOrderInput, requ
   }
   const contactValue = normalizeContact(input.contactValue);
   const contactType = detectContactType(contactValue);
+  const paymentChannel = normalizeOrderPaymentChannel(input.paymentChannel);
+  const remark = normalizeOrderRemark(input.remark);
   const availability = await getProductAvailability(product);
   if (!availability.available) {
     throw apiError(409, availability.reason ?? "商品暂无库存");
   }
 
-  const order = insertOrder(ctx, product, contactType, contactValue);
+  const order = insertOrder(ctx, product, contactType, contactValue, paymentChannel, remark);
   try {
     const paidOrder = await createPeerPayPayment(ctx, order, product, requestUrl);
     return { order: paidOrder, paymentUrl: paidOrder.peerpayPayUrl, rememberedAt: nowIso() };
@@ -610,11 +613,12 @@ async function createPeerPayPayment(ctx: AppContext, order: Order, product: Prod
   const callbackUrl = new URL("/api/payments/peerpay/callback", publicBase).toString();
   const redirectUrl = new URL(`/orders/${order.id}`, publicBase).toString();
   const peerpayUrl = new URL("/api/orders", settings.peerpayBaseUrl).toString();
+  const paymentChannel = order.peerpayPaymentChannel ?? settings.peerpayPaymentChannel;
   const response = await fetch(peerpayUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      paymentChannel: settings.peerpayPaymentChannel,
+      paymentChannel,
       amount: order.amount,
       merchantOrderId: order.id,
       subject: product.title,
@@ -639,7 +643,7 @@ async function createPeerPayPayment(ctx: AppContext, order: Order, product: Prod
     data.id,
     data.payUrl,
     data.actualAmountCents ?? (data.actualAmount ? parseMoney(data.actualAmount) : null),
-    data.paymentChannel ?? settings.peerpayPaymentChannel,
+    data.paymentChannel ?? paymentChannel,
     callbackSecret,
     nowIso(),
     order.id
@@ -734,16 +738,16 @@ function fulfillCardOrder(ctx: AppContext, order: Order) {
   return delivered;
 }
 
-function insertOrder(ctx: AppContext, product: Product, contactType: ContactType, contactValue: string) {
+function insertOrder(ctx: AppContext, product: Product, contactType: ContactType, contactValue: string, paymentChannel: PaymentChannel, remark: string | null) {
   const id = createOrderId();
   const at = nowIso();
   ctx.db.query(`
     INSERT INTO orders (
       id, product_id, product_slug, product_title, amount_cents, contact_type,
-      contact_value, status, delivery_mode, pickup_url, pickup_open_mode,
+      contact_value, remark, status, peerpay_payment_channel, delivery_mode, pickup_url, pickup_open_mode,
       created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     product.id,
@@ -752,13 +756,15 @@ function insertOrder(ctx: AppContext, product: Product, contactType: ContactType
     product.priceCents,
     contactType,
     contactValue,
+    remark,
+    paymentChannel,
     product.deliveryMode,
     product.pickupUrl,
     product.pickupOpenMode,
     at,
     at
   );
-  writeLog(ctx, "info", "order.create", `订单 ${id} 已创建`, { orderId: id, productId: product.id });
+  writeLog(ctx, "info", "order.create", `订单 ${id} 已创建`, { orderId: id, productId: product.id, paymentChannel, remark });
   const order = getOrder(ctx, id);
   if (!order) {
     throw apiError(500, "订单创建失败");
@@ -987,6 +993,7 @@ function orderFromRow(row: OrderRow): Order {
     amountCents: row.amount_cents,
     contactType: row.contact_type,
     contactValue: row.contact_value,
+    remark: row.remark,
     status: row.status,
     peerpayOrderId: row.peerpay_order_id,
     peerpayPayUrl: row.peerpay_pay_url,
@@ -1091,6 +1098,21 @@ function normalizeContact(value: string) {
     return text.replace(/[ -]/g, "");
   }
   return text;
+}
+
+function normalizeOrderPaymentChannel(value: unknown): PaymentChannel {
+  if (value === "alipay" || value === "wechat") {
+    return value;
+  }
+  throw apiError(400, "请选择支付方式");
+}
+
+function normalizeOrderRemark(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (text.length > 500) {
+    throw apiError(400, "备注不能超过 500 字");
+  }
+  return text || null;
 }
 
 function detectContactType(value: string): ContactType {
@@ -1232,6 +1254,8 @@ function orderTemplateVars(product: Product, order: Order) {
     orderId: order.id,
     contactType: order.contactType,
     contact: order.contactValue,
+    paymentChannel: order.peerpayPaymentChannel ?? "",
+    remark: order.remark ?? "",
     amount: order.amount
   };
 }
@@ -1267,6 +1291,8 @@ function formatOrderNotice(order: Order) {
     `商品：${order.productTitle}`,
     `金额：${order.amount}`,
     `联系方式：${order.contactValue}`,
+    order.peerpayPaymentChannel ? `支付方式：${PAYMENT_CHANNEL_LABELS[order.peerpayPaymentChannel]}` : null,
+    order.remark ? `备注：${order.remark}` : null,
     `状态：${order.status}`,
     order.peerpayOrderId ? `PeerPay 订单：${order.peerpayOrderId}` : null,
     order.manualReason ? `原因：${order.manualReason}` : null

@@ -411,7 +411,8 @@ body {
 
 .delivery-box,
 .manual-box,
-.payment-box {
+.payment-box,
+.remark-box {
   border: 2px solid #1e221d;
   background: #fffdf7;
   padding: 14px;
@@ -426,7 +427,8 @@ body {
 }
 
 .manual-box,
-.payment-box {
+.payment-box,
+.remark-box {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -451,6 +453,14 @@ body {
 .manual-box {
   border-color: #b7791f;
   background: #fff8e2;
+}
+
+.remark-box {
+  align-items: flex-start;
+  border-color: #2563eb;
+  background: #eef5ff;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .pickup-frame {
@@ -596,9 +606,19 @@ body {
   font-weight: 900;
 }
 
+.store-page .ant-form-item-additional {
+  padding-top: 12px;
+}
+
 .store-page .ant-form-item-extra {
+  margin-top: 0;
+  padding-left: 2px;
   color: #656a60;
   line-height: 1.5;
+}
+
+.store-page .ant-form-item-explain {
+  margin-top: 10px;
 }
 
 .store-page .ant-input {
@@ -610,6 +630,35 @@ body {
   box-shadow: 4px 4px 0 #181a17;
   font-weight: 800;
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.store-page textarea.ant-input,
+.store-page .ant-form-item textarea.ant-input {
+  min-height: 76px;
+  border: 2px solid #1e221d !important;
+  border-radius: 0 !important;
+  background: #fffdf7 !important;
+  box-shadow: 4px 4px 0 #181a17 !important;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.store-page textarea.ant-input:hover,
+.store-page textarea.ant-input:focus,
+.store-page .ant-form-item textarea.ant-input:hover,
+.store-page .ant-form-item textarea.ant-input:focus {
+  border-color: #1e221d !important;
+  background: #fffdf7 !important;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #181a17 !important;
+}
+
+.store-page .ant-input-data-count {
+  display: block;
+  margin-top: 10px;
+  color: #656a60;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .store-page .ant-input-lg {
@@ -634,6 +683,47 @@ body {
 .store-page .ant-input-status-error:not(.ant-input-disabled) {
   border-color: #c2410c;
   box-shadow: 4px 4px 0 #181a17;
+}
+
+.payment-channel-picker {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.store-page .payment-channel-picker .ant-radio-button-wrapper {
+  height: auto;
+  min-height: 48px;
+  border: 2px solid #1e221d;
+  border-radius: 0;
+  background: #fffdf7;
+  color: #181a17;
+  box-shadow: 4px 4px 0 #181a17;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.store-page .payment-channel-picker .ant-radio-button-wrapper::before {
+  display: none;
+}
+
+.store-page .payment-channel-picker .ant-radio-button-wrapper-checked {
+  background: #f0c84b;
+  color: #181a17;
+}
+
+.store-page .payment-channel-picker .ant-radio-button-wrapper:not(.ant-radio-button-wrapper-disabled):hover,
+.store-page .payment-channel-picker .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) {
+  border-color: #1e221d;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #181a17;
 }
 
 .store-ad-slot {
@@ -1030,6 +1120,7 @@ body {
   .page-heading,
   .form-grid,
   .checkout-grid,
+  .payment-channel-picker,
   .product-grid,
   .store-dialog-card {
     grid-template-columns: 1fr;
