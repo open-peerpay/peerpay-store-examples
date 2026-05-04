@@ -159,6 +159,7 @@ const statusColor: Record<string, string> = {
 
 const AD_GRADIENT_START_COLOR = "#fffdf7";
 const DEFAULT_AD_GRADIENT_COLOR = "#f0c84b";
+const IMAGE_UPLOAD_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 type AdGradientStyle = CSSProperties & {
   "--ad-gradient-start": string;
@@ -650,33 +651,14 @@ function AdSettingsView({ settings, onSaved }: { settings: StoreSettings; onSave
                       <TextArea rows={3} placeholder="自动发货商品已补充库存" />
                     </Form.Item>
                     <div className="form-grid">
-                      <Form.Item {...field} name={[field.name, "imageUrl"]} label="图片地址">
-                        <Input prefix={<PictureOutlined />} placeholder="上传图片后自动填入，也可以粘贴图片 URL" />
+                      <Form.Item {...field} name={[field.name, "imageUrl"]} label="图片">
+                        <ImageUrlUploadField />
                       </Form.Item>
                       <Form.Item {...field} name={[field.name, "linkUrl"]} label="点击跳转地址">
                         <Input prefix={<LinkOutlined />} placeholder="https://example.com 或 /orders" />
                       </Form.Item>
                     </div>
                     <Space wrap>
-                      <Upload
-                        accept="image/png,image/jpeg,image/webp,image/gif"
-                        customRequest={async (options) => {
-                          try {
-                            const result = await uploadImage(options.file as File);
-                            form.setFieldValue(["ads", field.name, "imageUrl"], result.url);
-                            options.onSuccess?.(result);
-                            message.success("图片已上传");
-                          } catch (error) {
-                            const uploadError = error instanceof Error ? error : new Error("上传失败");
-                            options.onError?.(uploadError);
-                            message.error(uploadError.message);
-                          }
-                        }}
-                        maxCount={1}
-                        showUploadList={false}
-                      >
-                        <Button icon={<UploadOutlined />}>上传图片</Button>
-                      </Upload>
                       <Button icon={<PlusOutlined />} onClick={() => add(emptyAd(), index + 1)}>在下方插入</Button>
                       <Form.Item noStyle shouldUpdate>
                         {({ getFieldValue }) => {
@@ -867,8 +849,8 @@ function ProductDrawer({ product, open, onClose, onSaved }: { product: Product |
         <Form.Item name="description" label="商品描述">
           <TextArea rows={4} />
         </Form.Item>
-        <Form.Item name="coverUrl" label="封面图 URL">
-          <Input />
+        <Form.Item name="coverUrl" label="封面图">
+          <ImageUrlUploadField placeholder="上传封面图后自动填入，也可以粘贴图片 URL" uploadText="上传封面图" />
         </Form.Item>
         <div className="form-grid">
           <Form.Item name="pickupUrl" label="提货网站 URL">
@@ -1370,6 +1352,64 @@ function ProductVisual({ product, large = false }: { product: Product | PublicPr
   );
 }
 
+function ImageUrlUploadField({
+  id,
+  value,
+  onChange,
+  placeholder = "上传图片后自动填入，也可以粘贴图片 URL",
+  uploadText = "上传图片"
+}: {
+  id?: string;
+  value?: string | null;
+  onChange?: (value: string) => void;
+  placeholder?: string;
+  uploadText?: string;
+}) {
+  const { message } = AntApp.useApp();
+  const [uploading, setUploading] = useState(false);
+  const imageUrl = typeof value === "string" ? value.trim() : "";
+
+  return (
+    <div className="image-url-field">
+      <div className="image-url-row">
+        <Input
+          id={id}
+          prefix={<PictureOutlined />}
+          value={value ?? ""}
+          onChange={(event) => onChange?.(event.target.value)}
+          placeholder={placeholder}
+          allowClear
+        />
+        <Upload
+          accept={IMAGE_UPLOAD_ACCEPT}
+          customRequest={async (options) => {
+            setUploading(true);
+            try {
+              const result = await uploadImage(options.file as File);
+              onChange?.(result.url);
+              options.onSuccess?.(result);
+              message.success("图片已上传");
+            } catch (error) {
+              const uploadError = error instanceof Error ? error : new Error("上传失败");
+              options.onError?.(uploadError);
+              message.error(uploadError.message);
+            } finally {
+              setUploading(false);
+            }
+          }}
+          maxCount={1}
+          showUploadList={false}
+        >
+          <Button icon={<UploadOutlined />} loading={uploading}>{uploadText}</Button>
+        </Upload>
+      </div>
+      {imageUrl && (
+        <div className="image-url-preview" role="img" aria-label="图片预览" style={{ backgroundImage: `url(${imageUrl})` }} />
+      )}
+    </div>
+  );
+}
+
 function StatusTag({ value, text }: { value: string; text: string }) {
   return <Tag color={statusColor[value] ?? "default"}>{text}</Tag>;
 }
@@ -1404,7 +1444,7 @@ function normalizeProductForm(values: Record<string, unknown>) {
     description: String(values.description ?? ""),
     price: Number(values.price),
     status: values.status as ProductStatus,
-    coverUrl: values.coverUrl ? String(values.coverUrl) : null,
+    coverUrl: String(values.coverUrl ?? "").trim() || null,
     sortOrder: Number(values.sortOrder ?? 100),
     deliveryMode,
     pickupUrl: values.pickupUrl ? String(values.pickupUrl) : null,

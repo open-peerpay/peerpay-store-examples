@@ -304,6 +304,28 @@ body {
   padding: 4px;
 }
 
+.image-url-field {
+  display: grid;
+  gap: 10px;
+}
+
+.image-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.image-url-preview {
+  width: 132px;
+  aspect-ratio: 16 / 10;
+  border: 2px solid #1e221d;
+  background-color: #fffdf7;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
 .ad-preview-image {
   display: grid;
   place-items: center;
@@ -1119,6 +1141,7 @@ body {
 
   .page-heading,
   .form-grid,
+  .image-url-row,
   .checkout-grid,
   .payment-channel-picker,
   .product-grid,
