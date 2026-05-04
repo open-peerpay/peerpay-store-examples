@@ -1195,7 +1195,7 @@ function OrderDetails({ order, publicView = false }: { order: Order; publicView?
 function OrderSearch({ searching, onSearch }: { searching: boolean; onSearch: (contact: string) => Promise<void> }) {
   return (
     <Form layout="vertical" onFinish={(values) => onSearch(values.contact)}>
-      <Form.Item name="contact" label="联系方式" extra="可填写 QQ、手机号码或者邮箱。">
+      <Form.Item name="contact" label="联系方式">
         <Input placeholder="QQ / 手机号码 / 邮箱" />
       </Form.Item>
       <Button className="store-button store-button-full" htmlType="submit" icon={<SearchOutlined />} loading={searching}>查询历史订单</Button>

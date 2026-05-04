@@ -552,6 +552,51 @@ body {
   cursor: not-allowed;
 }
 
+.store-page .ant-form-item-label > label {
+  color: #181a17;
+  font-weight: 900;
+}
+
+.store-page .ant-form-item-extra {
+  color: #656a60;
+  line-height: 1.5;
+}
+
+.store-page .ant-input {
+  min-height: 42px;
+  border: 2px solid #1e221d;
+  border-radius: 0;
+  background: #fffdf7;
+  color: #181a17;
+  box-shadow: 4px 4px 0 #181a17;
+  font-weight: 800;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.store-page .ant-input-lg {
+  min-height: 48px;
+  padding: 8px 12px;
+}
+
+.store-page .ant-input::placeholder {
+  color: #8f938a;
+  font-weight: 700;
+}
+
+.store-page .ant-input:hover,
+.store-page .ant-input:focus,
+.store-page .ant-input-focused {
+  border-color: #1e221d;
+  background: #fffdf7;
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #181a17;
+}
+
+.store-page .ant-input-status-error:not(.ant-input-disabled) {
+  border-color: #c2410c;
+  box-shadow: 4px 4px 0 #181a17;
+}
+
 .store-ad-slot {
   position: relative;
   min-height: clamp(188px, 22vw, 260px);
