@@ -144,7 +144,9 @@ const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
 };
 
 export function createAppContext(): AppContext {
-  return { db: createDatabase() };
+  const ctx = { db: createDatabase() };
+  ensureStoreSettings(ctx);
+  return ctx;
 }
 
 export function apiError(status: number, message: string) {
@@ -170,16 +172,31 @@ export function setSetting(ctx: AppContext, key: string, value: string, updatedA
   `).run(key, value, updatedAt);
 }
 
+function ensureStoreSettings(ctx: AppContext) {
+  const at = nowIso();
+  const defaults: Array<[string, string]> = [
+    ["peerpay_base_url", ""],
+    ["store_base_url", ""],
+    ["peerpay_payment_channel", "alipay"],
+    ["peerpay_ttl_minutes", "15"]
+  ];
+  for (const [key, value] of defaults) {
+    if (getSetting(ctx, key) === null) {
+      setSetting(ctx, key, value, at);
+    }
+  }
+}
+
 export function getStoreSettings(ctx: AppContext): StoreSettings {
   return {
     feishuWebhookUrl: blankToNull(getSetting(ctx, "feishu_webhook_url")),
     storeName: getSetting(ctx, "store_name") ?? "PeerPay Store",
     storeNotice: getSetting(ctx, "store_notice") ?? "自动发货和自助提货的轻量开源店铺。",
     ads: parseJson<StoreAd[]>(getSetting(ctx, "store_ads"), []),
-    peerpayBaseUrl: blankToNull(getSetting(ctx, "peerpay_base_url") ?? Bun.env.PEERPAY_BASE_URL ?? null),
-    storeBaseUrl: blankToNull(getSetting(ctx, "store_base_url") ?? Bun.env.STORE_BASE_URL ?? null),
-    peerpayPaymentChannel: normalizePaymentChannel(getSetting(ctx, "peerpay_payment_channel") ?? Bun.env.PEERPAY_PAYMENT_CHANNEL ?? "alipay"),
-    peerpayTtlMinutes: clampNumber(Number(getSetting(ctx, "peerpay_ttl_minutes") ?? Bun.env.PEERPAY_TTL_MINUTES ?? 15), 1, 1440)
+    peerpayBaseUrl: blankToNull(getSetting(ctx, "peerpay_base_url")),
+    storeBaseUrl: blankToNull(getSetting(ctx, "store_base_url")),
+    peerpayPaymentChannel: normalizePaymentChannel(getSetting(ctx, "peerpay_payment_channel") ?? "alipay"),
+    peerpayTtlMinutes: clampNumber(Number(getSetting(ctx, "peerpay_ttl_minutes") ?? 15), 1, 1440)
   };
 }
 

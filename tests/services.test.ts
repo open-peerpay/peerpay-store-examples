@@ -5,7 +5,9 @@ import {
   createOrder,
   createProduct,
   findOrdersByContact,
+  getStoreSettings,
   handlePeerPayCallback,
+  updateStoreSettings,
   type AppContext
 } from "../server/services";
 import { createHmac } from "node:crypto";
@@ -79,6 +81,43 @@ describe("store services", () => {
       contactValue: "123456"
     })).rejects.toThrow("预检测请求未配置");
   });
+
+  test("reads PeerPay integration settings from SQLite instead of environment variables", () => {
+    const ctx = createTestContext();
+    const previousBaseUrl = Bun.env.PEERPAY_BASE_URL;
+    const previousStoreBaseUrl = Bun.env.STORE_BASE_URL;
+    const previousChannel = Bun.env.PEERPAY_PAYMENT_CHANNEL;
+    const previousTtl = Bun.env.PEERPAY_TTL_MINUTES;
+
+    Bun.env.PEERPAY_BASE_URL = "https://env-peerpay.invalid";
+    Bun.env.STORE_BASE_URL = "https://env-store.invalid";
+    Bun.env.PEERPAY_PAYMENT_CHANNEL = "wechat";
+    Bun.env.PEERPAY_TTL_MINUTES = "90";
+
+    try {
+      expect(getStoreSettings(ctx).peerpayBaseUrl).toBeNull();
+      expect(getStoreSettings(ctx).storeBaseUrl).toBeNull();
+      expect(getStoreSettings(ctx).peerpayPaymentChannel).toBe("alipay");
+      expect(getStoreSettings(ctx).peerpayTtlMinutes).toBe(15);
+
+      const saved = updateStoreSettings(ctx, {
+        peerpayBaseUrl: "https://sqlite-peerpay.test",
+        storeBaseUrl: "https://sqlite-store.test",
+        peerpayPaymentChannel: "wechat",
+        peerpayTtlMinutes: 30
+      });
+
+      expect(saved.peerpayBaseUrl).toBe("https://sqlite-peerpay.test");
+      expect(saved.storeBaseUrl).toBe("https://sqlite-store.test");
+      expect(saved.peerpayPaymentChannel).toBe("wechat");
+      expect(saved.peerpayTtlMinutes).toBe(30);
+    } finally {
+      restoreEnv("PEERPAY_BASE_URL", previousBaseUrl);
+      restoreEnv("STORE_BASE_URL", previousStoreBaseUrl);
+      restoreEnv("PEERPAY_PAYMENT_CHANNEL", previousChannel);
+      restoreEnv("PEERPAY_TTL_MINUTES", previousTtl);
+    }
+  });
 });
 
 function mockPeerPayFetch() {
@@ -114,4 +153,12 @@ function signPeerPayPayload(payload: Record<string, unknown>, secret: string) {
     .map((key) => `${key}=${payload[key] ?? ""}`)
     .join("&");
   return createHmac("sha256", secret).update(canonical).digest("hex");
+}
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) {
+    delete Bun.env[key];
+    return;
+  }
+  Bun.env[key] = value;
 }

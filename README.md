@@ -43,15 +43,11 @@ PORT=3000
 DATABASE_URL=./data/peerpay-store.sqlite
 NODE_ENV=production
 ADMIN_PATH=/admin
-PEERPAY_BASE_URL=https://peerpay.example.com
-PEERPAY_PAYMENT_CHANNEL=alipay
-PEERPAY_TTL_MINUTES=15
-STORE_BASE_URL=https://store.example.com
 ```
 
 ## PeerPay 支付配置
 
-PeerPay 服务地址需要通过后台“商店配置”或环境变量 `PEERPAY_BASE_URL` 配置。仓库里只保留脱敏示例值，生产部署时请改成自己的 PeerPay 访问地址。
+PeerPay 服务地址、Store 公开访问地址、默认付款方式和支付有效期都存储在 SQLite 的 `app_settings` 表中，通过后台“商店配置”可视化维护，不再通过环境变量配置。
 
 Store 创建业务订单后，会由后端调用 PeerPay `/api/orders` 创建支付订单，并传入：
 
@@ -141,4 +137,4 @@ bun run build:bin  # 构建 Linux x64 单文件可执行程序
 bun run publish root@your-server  # 编译并发布到 /home/peerpay-store
 ```
 
-`publish` 会参考 PeerPay 后端的部署方式：编译 `dist/peerpay-store`，上传到远端 `/home/peerpay-store/peerpay-store`，并在远端不存在 `ecosystem.config.js` 时上传 PM2 配置。生产环境需要在服务器上准备环境变量，例如 `PEERPAY_BASE_URL`、`STORE_BASE_URL`、`ADMIN_PATH` 和 `DATABASE_URL`。
+`publish` 会参考 PeerPay 后端的部署方式：编译 `dist/peerpay-store`，上传到远端 `/home/peerpay-store/peerpay-store`，并在远端不存在 `ecosystem.config.js` 时上传 PM2 配置。生产环境只需要在服务器上准备运行类环境变量，例如 `PORT`、`DATABASE_URL` 和 `ADMIN_PATH`；PeerPay 对接配置请在后台“商店配置”中保存到 SQLite。
