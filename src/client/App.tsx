@@ -1666,6 +1666,7 @@ function StoreDialog({ open, onClose, labelledBy, children }: { open: boolean; o
 }
 
 function OrderDetails({ order, publicView = false }: { order: Order; publicView?: boolean }) {
+  const showPickup = canShowPickup(order);
   return (
     <div className={publicView ? "order-detail public-order-detail" : "order-detail"}>
       <div className="settings-grid">
@@ -1705,14 +1706,18 @@ function OrderDetails({ order, publicView = false }: { order: Order; publicView?
           <span>{publicView ? "订单处理中，请联系商家处理" : order.manualReason}</span>
         </section>
       )}
-      {order.pickupUrl && order.pickupOpenMode === "new_tab" && (
+      {showPickup && order.pickupUrl && order.pickupOpenMode === "new_tab" && (
         <Button className={publicView ? "store-button store-button-primary" : undefined} type={publicView ? undefined : "primary"} href={order.pickupUrl} target="_blank">打开提货网站</Button>
       )}
-      {order.pickupUrl && order.pickupOpenMode === "iframe" && (
+      {showPickup && order.pickupUrl && order.pickupOpenMode === "iframe" && (
         <iframe className="pickup-frame" src={order.pickupUrl} title="自助提货" />
       )}
     </div>
   );
+}
+
+function canShowPickup(order: Order) {
+  return order.status === "paid" || order.status === "delivered" || order.status === "needs_manual";
 }
 
 function OrderSearch({ searching, onSearch }: { searching: boolean; onSearch: (contact: string) => Promise<void> }) {

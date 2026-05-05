@@ -8,6 +8,7 @@ import {
   getPublicProduct,
   getPublicProductAvailability,
   getPublicProductCaptcha,
+  getPublicOrder,
   getStoreSettings,
   handlePeerPayCallback,
   listPublicProducts,
@@ -65,6 +66,57 @@ describe("store services", () => {
       expect(callback.order.status).toBe("delivered");
       expect(callback.order.deliveryPayload).toBe("CARD-001");
       expect(findOrdersByContact(ctx, "13800138000")).toHaveLength(1);
+    } finally {
+      restorePeerPay();
+    }
+  });
+
+  test("hides embedded pickup until the order is paid", async () => {
+    const ctx = createTestContext();
+    const restorePeerPay = mockPeerPayFetch();
+    createProduct(ctx, {
+      title: "内嵌提货商品",
+      slug: "pickup-iframe",
+      price: "12.00",
+      status: "active",
+      deliveryMode: "manual",
+      pickupUrl: "https://pickup.test/self-service",
+      pickupOpenMode: "iframe"
+    });
+
+    try {
+      ctx.db.query("INSERT INTO app_settings(key, value, updated_at) VALUES ('peerpay_base_url', ?, ?)").run("http://peerpay.test", new Date().toISOString());
+      const result = await createOrder(ctx, {
+        slug: "pickup-iframe",
+        contactValue: "buyer@example.com",
+        paymentChannel: "alipay"
+      }, "http://store.test/api/public/orders");
+
+      expect(result.order.status).toBe("pending_payment");
+      expect(result.order.pickupUrl).toBe("https://pickup.test/self-service");
+
+      const publicPending = getPublicOrder(ctx, result.order.id);
+      expect(publicPending?.pickupUrl).toBeNull();
+      expect(publicPending?.pickupOpenMode).toBe("none");
+
+      const secret = ctx.db.query("SELECT peerpay_callback_secret AS secret FROM orders WHERE id = ?").get(result.order.id) as { secret: string };
+      const payload = {
+        orderId: result.order.peerpayOrderId!,
+        merchantOrderId: result.order.id,
+        paymentAccountCode: "alipay-a",
+        paymentChannel: "alipay" as const,
+        status: "paid",
+        requestedAmount: "12.00",
+        actualAmount: "12.00",
+        paidAt: "2026-05-04T00:00:00.000Z"
+      };
+      const sign = signPeerPayPayload(payload, secret.secret);
+      await handlePeerPayCallback(ctx, { ...payload, sign }, sign);
+
+      const publicPaid = getPublicOrder(ctx, result.order.id);
+      expect(publicPaid?.status).toBe("needs_manual");
+      expect(publicPaid?.pickupUrl).toBe("https://pickup.test/self-service");
+      expect(publicPaid?.pickupOpenMode).toBe("iframe");
     } finally {
       restorePeerPay();
     }

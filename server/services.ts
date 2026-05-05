@@ -568,15 +568,22 @@ export function getPublicOrder(ctx: AppContext, id: string) {
 }
 
 export function publicOrderFromOrder(order: Order): Order {
+  const showPickup = canShowPickup(order);
   return {
     ...order,
     deliveryMode: order.deliveryMode === "upstream" ? "manual" : order.deliveryMode,
+    pickupUrl: showPickup ? order.pickupUrl : null,
+    pickupOpenMode: showPickup ? order.pickupOpenMode : "none",
     upstreamOrderId: null,
     upstreamResponse: null,
     upstreamCaptcha: null,
     upstreamCaptchaToken: null,
     manualReason: order.manualReason ? "订单处理中，请联系商家处理" : null
   };
+}
+
+function canShowPickup(order: Order) {
+  return order.status === "paid" || order.status === "delivered" || order.status === "needs_manual";
 }
 
 export function updateOrderStatus(ctx: AppContext, id: string, status: OrderStatus, manualReason?: string, deliveryPayload?: string) {
