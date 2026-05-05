@@ -11,9 +11,9 @@ import {
   createOrder,
   createProduct,
   dashboardStats,
-  findOrdersByContact,
-  getOrder,
+  findPublicOrdersByContact,
   getPublicProduct,
+  getPublicOrder,
   getStoreSettings,
   handlePeerPayCallback,
   listCards,
@@ -21,6 +21,7 @@ import {
   listProducts,
   listPublicProducts,
   listSystemLogs,
+  publicOrderFromOrder,
   setProductStatus,
   saveUploadedImage,
   updateOrderStatus,
@@ -141,15 +142,15 @@ export function createApiRoutes(ctx: AppContext) {
         if (!contactValue) {
           return json([]);
         }
-        return json(findOrdersByContact(ctx, contactValue));
+        return json(findPublicOrdersByContact(ctx, contactValue));
       }),
       POST: (req: Request) => withErrors(async () => {
         const result = await createOrder(ctx, await readJson<CreateOrderInput>(req), req.url);
-        return json(result, { status: 201 });
+        return json({ ...result, order: publicOrderFromOrder(result.order) }, { status: 201 });
       })
     },
     "/api/public/orders/:id": {
-      GET: (req: RouteRequest<{ id: string }>) => withErrors(() => json(getOrder(ctx, req.params.id)))
+      GET: (req: RouteRequest<{ id: string }>) => withErrors(() => json(getPublicOrder(ctx, req.params.id)))
     },
     "/api/payments/peerpay/callback": {
       POST: (req: Request) => withErrors(async () => {

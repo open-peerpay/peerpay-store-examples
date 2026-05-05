@@ -1276,7 +1276,7 @@ function Storefront() {
           <div>
             <p className="store-eyebrow">OPEN SOURCE STORE</p>
             <h1>{settings.storeName}</h1>
-            <Text>{settings.storeNotice || "固定价格、自动发货、动态取货和自助查询。无需登录即可下单。"}</Text>
+            <Text>{settings.storeNotice || "固定价格、自动发货和自助查询。无需登录即可下单。"}</Text>
           </div>
           <div className="store-status-chip">
             <span>当前商品</span>
@@ -1305,7 +1305,7 @@ function Storefront() {
                   <span className="product-card-media">
                     <ProductVisual product={product} card />
                     <span className="product-card-stock">
-                      {product.available ? "可购买" : product.availabilityReason ?? "暂不可购"}
+                      {product.available ? "可购买" : "无库存"}
                     </span>
                   </span>
                   <span className="product-card-body">
@@ -1314,8 +1314,7 @@ function Storefront() {
                     <span className="product-card-footer">
                       <span className="product-card-meta">¥{product.price}</span>
                       <span className="product-card-tags">
-                        <StatusTag value={product.available ? "active" : "archived"} text={product.available ? "有货" : product.availabilityReason ?? "无货"} />
-                        <StatusTag value={product.deliveryMode} text={DELIVERY_MODE_LABELS[product.deliveryMode]} />
+                        <StatusTag value={product.available ? "active" : "archived"} text={product.available ? "有货" : "无库存"} />
                       </span>
                     </span>
                   </span>
@@ -1438,8 +1437,7 @@ function ProductModal({
             <Paragraph>{product.description || "该商品支持自助下单、付款后自动发货和历史订单查询。"}</Paragraph>
             <div className="price-line">¥{product.price}</div>
             <div className="tag-row">
-              <StatusTag value={product.deliveryMode} text={DELIVERY_MODE_LABELS[product.deliveryMode]} />
-              <StatusTag value={product.available ? "active" : "archived"} text={product.available ? "有货" : product.availabilityReason ?? "无货"} />
+              <StatusTag value={product.available ? "active" : "archived"} text={product.available ? "有货" : "无库存"} />
               <Tag>{PICKUP_OPEN_MODE_LABELS[product.pickupOpenMode]}</Tag>
             </div>
             <Form
@@ -1462,7 +1460,7 @@ function ProductModal({
                   }
                   onOrdered(result.order);
                 } catch (error) {
-                  message.error(error instanceof Error ? error.message : "下单失败");
+                  message.error(storefrontErrorMessage(error));
                 } finally {
                   setLoading(false);
                 }
@@ -1487,7 +1485,7 @@ function ProductModal({
                 <TextArea rows={3} maxLength={500} showCount placeholder="选填，最多 500 字" />
               </Form.Item>
               <Button className="store-button store-button-primary store-button-full" htmlType="submit" loading={loading} block disabled={!product.available} icon={<ShoppingCartOutlined />}>
-                {product.available ? "提交订单并付款" : "暂时无货"}
+                {product.available ? "提交订单并付款" : "无库存"}
               </Button>
             </Form>
           </section>
@@ -1579,7 +1577,7 @@ function OrderDetails({ order, publicView = false }: { order: Order; publicView?
       {order.manualReason && (
         <section className="manual-box">
           <BellOutlined />
-          <span>{order.manualReason}</span>
+          <span>{publicView ? "订单处理中，请联系商家处理" : order.manualReason}</span>
         </section>
       )}
       {order.pickupUrl && order.pickupOpenMode === "new_tab" && (
@@ -1720,6 +1718,11 @@ function renderPaymentChannel(value: PaymentChannel | null) {
 
 function paymentChannelText(value: PaymentChannel | null) {
   return value ? PAYMENT_CHANNEL_LABELS[value] : "-";
+}
+
+function storefrontErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "下单失败";
+  return /上游|预检测|动态|库存|无货|暂无库存|未配置/.test(message) ? "无库存" : message;
 }
 
 function InfoCell({ label, value }: { label: string; value: string | number }) {

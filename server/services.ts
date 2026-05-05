@@ -117,6 +117,10 @@ interface Availability {
   reason: string | null;
 }
 
+interface AvailabilityOptions {
+  skipPrecheck?: boolean;
+}
+
 type UpstreamRequestKind = "precheck" | "stock" | "order";
 
 interface PeerPayCreateOrderResponse {
@@ -313,8 +317,8 @@ export async function listPublicProducts(ctx: AppContext) {
   const products: PublicProduct[] = [];
   for (const row of rows) {
     const product = productFromRow(ctx, row);
-    const availability = await getProductAvailability(product);
-    products.push({ ...product, available: availability.available, availabilityReason: availability.reason });
+    const availability = await getProductAvailability(product, { skipPrecheck: true });
+    products.push(publicProductFromAvailability(product, availability));
   }
   return products;
 }
@@ -326,7 +330,17 @@ export async function getPublicProduct(ctx: AppContext, slug: string) {
   }
   const product = productFromRow(ctx, row);
   const availability = await getProductAvailability(product);
-  return { ...product, available: availability.available, availabilityReason: availability.reason };
+  return publicProductFromAvailability(product, availability);
+}
+
+function publicProductFromAvailability(product: Product, availability: Availability): PublicProduct {
+  return {
+    ...product,
+    deliveryMode: product.deliveryMode === "upstream" ? "manual" : product.deliveryMode,
+    upstreamConfig: null,
+    available: availability.available,
+    availabilityReason: availability.available ? null : "无库存"
+  };
 }
 
 export function createProduct(ctx: AppContext, input: CreateProductInput) {
@@ -504,6 +518,25 @@ export function findOrdersByContact(ctx: AppContext, contactValue: string): Orde
     LIMIT 50
   `).all(normalized) as OrderRow[];
   return rows.map(orderFromRow);
+}
+
+export function findPublicOrdersByContact(ctx: AppContext, contactValue: string): Order[] {
+  return findOrdersByContact(ctx, contactValue).map(publicOrderFromOrder);
+}
+
+export function getPublicOrder(ctx: AppContext, id: string) {
+  const order = getOrder(ctx, id);
+  return order ? publicOrderFromOrder(order) : null;
+}
+
+export function publicOrderFromOrder(order: Order): Order {
+  return {
+    ...order,
+    deliveryMode: order.deliveryMode === "upstream" ? "manual" : order.deliveryMode,
+    upstreamOrderId: null,
+    upstreamResponse: null,
+    manualReason: order.manualReason ? "订单处理中，请联系商家处理" : null
+  };
 }
 
 export function updateOrderStatus(ctx: AppContext, id: string, status: OrderStatus, manualReason?: string, deliveryPayload?: string) {
@@ -827,7 +860,7 @@ function updateOrderManual(ctx: AppContext, id: string, manualReason: string, up
   return order;
 }
 
-async function getProductAvailability(product: Product): Promise<Availability> {
+async function getProductAvailability(product: Product, options: AvailabilityOptions = {}): Promise<Availability> {
   if (product.status !== "active") {
     return { available: false, reason: "商品未上架" };
   }
@@ -839,17 +872,17 @@ async function getProductAvailability(product: Product): Promise<Availability> {
   if (product.deliveryMode === "manual") {
     return { available: true, reason: null };
   }
-  return checkUpstreamAvailability(product);
+  return checkUpstreamAvailability(product, options);
 }
 
-async function checkUpstreamAvailability(product: Product): Promise<Availability> {
+async function checkUpstreamAvailability(product: Product, options: AvailabilityOptions = {}): Promise<Availability> {
   const config = product.upstreamConfig;
   if (!config) {
     return { available: false, reason: "未配置上游" };
   }
   const vars = productTemplateVars(product);
   const precheck = config.precheck;
-  if (precheck?.enabled) {
+  if (!options.skipPrecheck && precheck?.enabled) {
     if (!precheck.url) {
       return { available: false, reason: "预检测请求未配置" };
     }

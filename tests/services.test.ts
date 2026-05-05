@@ -5,8 +5,10 @@ import {
   createOrder,
   createProduct,
   findOrdersByContact,
+  getPublicProduct,
   getStoreSettings,
   handlePeerPayCallback,
+  listPublicProducts,
   updateOrderStatus,
   updateStoreSettings,
   type AppContext
@@ -120,6 +122,53 @@ describe("store services", () => {
         contactValue: "buyer",
         paymentChannel: "alipay"
       })).rejects.toThrow("预检测不通过");
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test("runs upstream precheck on product detail instead of public list", async () => {
+    const ctx = createTestContext();
+    let precheckCalls = 0;
+    const restoreFetch = mockFetch(async (url) => {
+      if (url.origin === "https://upstream.test" && url.pathname === "/precheck") {
+        precheckCalls += 1;
+        return Response.json({ ok: false });
+      }
+      return undefined;
+    });
+    createProduct(ctx, {
+      title: "详情预检商品",
+      slug: "detail-precheck",
+      price: "19.00",
+      status: "active",
+      deliveryMode: "upstream",
+      upstreamConfig: {
+        sku: "detail-precheck",
+        precheck: {
+          enabled: true,
+          method: "GET",
+          url: "https://upstream.test/precheck?sku={{sku}}",
+          expect: { path: "ok", equals: true }
+        },
+        order: { enabled: true, url: "https://upstream.test/order" }
+      }
+    });
+
+    try {
+      const list = await listPublicProducts(ctx);
+      expect(precheckCalls).toBe(0);
+      expect(list[0]?.available).toBe(true);
+      expect(list[0]?.availabilityReason).toBeNull();
+      expect(list[0]?.deliveryMode).toBe("manual");
+      expect(list[0]?.upstreamConfig).toBeNull();
+
+      const detail = await getPublicProduct(ctx, "detail-precheck");
+      expect(precheckCalls).toBe(1);
+      expect(detail?.available).toBe(false);
+      expect(detail?.availabilityReason).toBe("无库存");
+      expect(detail?.deliveryMode).toBe("manual");
+      expect(detail?.upstreamConfig).toBeNull();
     } finally {
       restoreFetch();
     }
