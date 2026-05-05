@@ -178,12 +178,19 @@ const EXPECT_MODE_OPTIONS = [
   { value: "exists", label: "存在" },
   { value: "missing", label: "不存在" }
 ];
+const SCALAR_VALUE_TYPE_OPTIONS = [
+  { value: "string", label: "字符串" },
+  { value: "number", label: "数字" },
+  { value: "boolean", label: "布尔" },
+  { value: "json", label: "JSON" }
+];
 type AdGradientStyle = CSSProperties & {
   "--ad-gradient-start": string;
   "--ad-gradient-color": string;
 };
 type UpstreamRequestKey = "precheck" | "stock" | "order";
 type ExpectMode = "truthy" | "equals" | "exists" | "missing";
+type ScalarValueType = "string" | "number" | "boolean" | "json";
 
 interface UpstreamRequestFormValue {
   enabled?: boolean;
@@ -196,12 +203,15 @@ interface UpstreamRequestFormValue {
   expectMode?: ExpectMode;
   expectPath?: string;
   expectEquals?: string;
+  expectEqualsType?: ScalarValueType;
   stockPath?: string;
   minStock?: number;
   availablePath?: string;
   availableEquals?: string;
+  availableEqualsType?: ScalarValueType;
   successPath?: string;
   successEquals?: string;
+  successEqualsType?: ScalarValueType;
   deliveryPath?: string;
   remoteOrderIdPath?: string;
 }
@@ -1044,8 +1054,11 @@ function UpstreamConfigEditor() {
           <Form.Item name={["upstreamConfig", "stock", "availablePath"]} label="可用字段">
             <Input placeholder="data.available" />
           </Form.Item>
+          <Form.Item name={["upstreamConfig", "stock", "availableEqualsType"]} label="可用值类型">
+            <Select options={SCALAR_VALUE_TYPE_OPTIONS} />
+          </Form.Item>
           <Form.Item name={["upstreamConfig", "stock", "availableEquals"]} label="可用等于">
-            <Input placeholder="true" />
+            <Input placeholder="true / 1 / available" />
           </Form.Item>
         </div>
       </UpstreamRequestSection>
@@ -1057,8 +1070,11 @@ function UpstreamConfigEditor() {
           <Form.Item name={["upstreamConfig", "order", "successPath"]} label="成功字段">
             <Input placeholder="code" />
           </Form.Item>
+          <Form.Item name={["upstreamConfig", "order", "successEqualsType"]} label="成功值类型">
+            <Select options={SCALAR_VALUE_TYPE_OPTIONS} />
+          </Form.Item>
           <Form.Item name={["upstreamConfig", "order", "successEquals"]} label="成功等于">
-            <Input placeholder="0" />
+            <Input placeholder="200" />
           </Form.Item>
           <Form.Item name={["upstreamConfig", "order", "deliveryPath"]} label="发货字段">
             <Input placeholder="data.secret" />
@@ -1146,9 +1162,14 @@ function UpstreamExpectationFields({ name }: { name: UpstreamRequestKey }) {
                 <Input placeholder="ok" />
               </Form.Item>
               {mode === "equals" && (
-                <Form.Item name={["upstreamConfig", name, "expectEquals"]} label="等于">
-                  <Input placeholder="true" />
-                </Form.Item>
+                <>
+                  <Form.Item name={["upstreamConfig", name, "expectEqualsType"]} label="值类型">
+                    <Select options={SCALAR_VALUE_TYPE_OPTIONS} />
+                  </Form.Item>
+                  <Form.Item name={["upstreamConfig", name, "expectEquals"]} label="等于">
+                    <Input placeholder="30.00" />
+                  </Form.Item>
+                </>
               )}
             </div>
           );
@@ -1759,8 +1780,10 @@ function upstreamRequestToForm(request?: UpstreamHttpRequest): UpstreamRequestFo
     minStock: (request as UpstreamStockRequest | undefined)?.minStock ?? 1,
     availablePath: (request as UpstreamStockRequest | undefined)?.availablePath ?? "",
     availableEquals: formatScalarText((request as UpstreamStockRequest | undefined)?.availableEquals),
+    availableEqualsType: scalarValueType((request as UpstreamStockRequest | undefined)?.availableEquals),
     successPath: (request as UpstreamOrderRequest | undefined)?.successPath ?? "",
     successEquals: formatScalarText((request as UpstreamOrderRequest | undefined)?.successEquals),
+    successEqualsType: scalarValueType((request as UpstreamOrderRequest | undefined)?.successEquals),
     deliveryPath: (request as UpstreamOrderRequest | undefined)?.deliveryPath ?? "",
     remoteOrderIdPath: (request as UpstreamOrderRequest | undefined)?.remoteOrderIdPath ?? ""
   };
@@ -1776,20 +1799,25 @@ function inferUpstreamBodyType(request?: UpstreamHttpRequest): HttpBodyType {
   return typeof request?.body === "string" ? "raw" : "json";
 }
 
-function expectationToForm(expectation?: HttpExpectation): Pick<UpstreamRequestFormValue, "expectMode" | "expectPath" | "expectEquals"> {
+function expectationToForm(expectation?: HttpExpectation): Pick<UpstreamRequestFormValue, "expectMode" | "expectPath" | "expectEquals" | "expectEqualsType"> {
   if (!expectation) {
-    return { expectMode: "truthy", expectPath: "", expectEquals: "" };
+    return { expectMode: "truthy", expectPath: "", expectEquals: "", expectEqualsType: "string" };
   }
   if ("equals" in expectation) {
-    return { expectMode: "equals", expectPath: expectation.path ?? "", expectEquals: formatScalarText(expectation.equals) };
+    return {
+      expectMode: "equals",
+      expectPath: expectation.path ?? "",
+      expectEquals: formatScalarText(expectation.equals),
+      expectEqualsType: scalarValueType(expectation.equals)
+    };
   }
   if (expectation.exists === false) {
-    return { expectMode: "missing", expectPath: expectation.path ?? "", expectEquals: "" };
+    return { expectMode: "missing", expectPath: expectation.path ?? "", expectEquals: "", expectEqualsType: "string" };
   }
   if (expectation.exists === true) {
-    return { expectMode: "exists", expectPath: expectation.path ?? "", expectEquals: "" };
+    return { expectMode: "exists", expectPath: expectation.path ?? "", expectEquals: "", expectEqualsType: "string" };
   }
-  return { expectMode: "truthy", expectPath: expectation.path ?? "", expectEquals: "" };
+  return { expectMode: "truthy", expectPath: expectation.path ?? "", expectEquals: "", expectEqualsType: "string" };
 }
 
 function normalizeUpstreamConfigForm(value: unknown): UpstreamConfig {
@@ -1826,7 +1854,7 @@ function normalizeUpstreamStockRequestForm(value: UpstreamRequestFormValue | und
     stockPath: trimToUndefined(value?.stockPath),
     minStock: normalizeOptionalNumber(value?.minStock),
     availablePath: trimToUndefined(value?.availablePath),
-    availableEquals: parseOptionalScalar(value?.availableEquals)
+    availableEquals: parseOptionalScalar(value?.availableEquals, value?.availableEqualsType)
   }) as UpstreamStockRequest;
 }
 
@@ -1834,7 +1862,7 @@ function normalizeUpstreamOrderRequestForm(value: UpstreamRequestFormValue | und
   return stripEmptyObject({
     ...normalizeUpstreamRequestForm(value),
     successPath: trimToUndefined(value?.successPath),
-    successEquals: parseOptionalScalar(value?.successEquals),
+    successEquals: parseOptionalScalar(value?.successEquals, value?.successEqualsType),
     deliveryPath: trimToUndefined(value?.deliveryPath),
     remoteOrderIdPath: trimToUndefined(value?.remoteOrderIdPath)
   }) as UpstreamOrderRequest;
@@ -1844,7 +1872,7 @@ function normalizeExpectationForm(value: UpstreamRequestFormValue | undefined): 
   const mode = value?.expectMode ?? "truthy";
   const path = trimToUndefined(value?.expectPath);
   if (mode === "equals") {
-    return stripEmptyObject({ path, equals: parseScalar(value?.expectEquals ?? "") }) as HttpExpectation;
+    return stripEmptyObject({ path, equals: parseScalar(value?.expectEquals ?? "", value?.expectEqualsType) }) as HttpExpectation;
   }
   if (mode === "exists") {
     return stripEmptyObject({ path, exists: true }) as HttpExpectation;
@@ -1929,20 +1957,40 @@ function parseLooseObject(value: unknown, label: string) {
   return entries.length ? Object.fromEntries(entries) : undefined;
 }
 
-function parseOptionalScalar(value: unknown) {
+function parseOptionalScalar(value: unknown, type: ScalarValueType | undefined) {
   const text = typeof value === "string" ? value.trim() : "";
-  return text ? parseScalar(text) : undefined;
+  return text ? parseScalar(text, type) : undefined;
 }
 
-function parseScalar(value: unknown) {
+function parseScalar(value: unknown, type: ScalarValueType | undefined) {
   const text = typeof value === "string" ? value.trim() : String(value ?? "");
   if (!text) {
     return "";
   }
+  const valueType = type ?? "string";
+  if (valueType === "string") {
+    return text;
+  }
+  if (valueType === "number") {
+    const number = Number(text);
+    if (!Number.isFinite(number)) {
+      throw new Error("等于值必须是有效数字");
+    }
+    return number;
+  }
+  if (valueType === "boolean") {
+    if (text === "true" || text === "1") {
+      return true;
+    }
+    if (text === "false" || text === "0") {
+      return false;
+    }
+    throw new Error("等于值必须是 true、false、1 或 0");
+  }
   try {
     return JSON.parse(text);
   } catch {
-    return text;
+    throw new Error("等于值必须是有效 JSON");
   }
 }
 
@@ -1990,6 +2038,19 @@ function formatScalarText(value: unknown) {
     return "";
   }
   return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function scalarValueType(value: unknown): ScalarValueType {
+  if (typeof value === "number") {
+    return "number";
+  }
+  if (typeof value === "boolean") {
+    return "boolean";
+  }
+  if (typeof value === "string" || value === undefined || value === null) {
+    return "string";
+  }
+  return "json";
 }
 
 function normalizeProductForm(values: Record<string, unknown>) {

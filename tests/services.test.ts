@@ -179,6 +179,42 @@ describe("store services", () => {
     }
   });
 
+  test("accepts string stock values from upstream stock checks", async () => {
+    const ctx = createTestContext();
+    const restoreFetch = mockFetch(async (url) => {
+      if (url.origin === "https://upstream.test" && url.pathname === "/stock") {
+        return Response.json({ code: 200, data: { stock: "89", stock_state: 3 } });
+      }
+      return undefined;
+    });
+    createProduct(ctx, {
+      title: "字符串库存商品",
+      slug: "string-stock",
+      price: "30.00",
+      status: "active",
+      deliveryMode: "upstream",
+      upstreamConfig: {
+        sku: "string-stock",
+        stock: {
+          enabled: true,
+          method: "POST",
+          url: "https://upstream.test/stock",
+          stockPath: "data.stock",
+          minStock: 1
+        },
+        order: { enabled: true, url: "https://upstream.test/order" }
+      }
+    });
+
+    try {
+      const products = await listPublicProducts(ctx);
+      expect(products[0]?.available).toBe(true);
+      expect(products[0]?.availabilityReason).toBeNull();
+    } finally {
+      restoreFetch();
+    }
+  });
+
   test("sends upstream POST body as x-www-form-urlencoded", async () => {
     const ctx = createTestContext();
     let upstreamBody = "";
