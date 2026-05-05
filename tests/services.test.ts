@@ -130,9 +130,11 @@ describe("store services", () => {
   test("runs upstream precheck on product detail instead of public list", async () => {
     const ctx = createTestContext();
     let precheckCalls = 0;
-    const restoreFetch = mockFetch(async (url) => {
+    let precheckBody = "";
+    const restoreFetch = mockFetch(async (url, init) => {
       if (url.origin === "https://upstream.test" && url.pathname === "/precheck") {
         precheckCalls += 1;
+        precheckBody = String(init?.body ?? "");
         return Response.json({ ok: false });
       }
       return undefined;
@@ -147,8 +149,10 @@ describe("store services", () => {
         sku: "detail-precheck",
         precheck: {
           enabled: true,
-          method: "GET",
+          method: "POST",
           url: "https://upstream.test/precheck?sku={{sku}}",
+          bodyType: "form",
+          body: { password: "&num=1&captcha=&item_id=7" },
           expect: { path: "ok", equals: true }
         },
         order: { enabled: true, url: "https://upstream.test/order" }
@@ -165,6 +169,7 @@ describe("store services", () => {
 
       const detail = await getPublicProduct(ctx, "detail-precheck");
       expect(precheckCalls).toBe(1);
+      expect(precheckBody).toBe("password=&num=1&captcha=&item_id=7");
       expect(detail?.available).toBe(false);
       expect(detail?.availabilityReason).toBe("无库存");
       expect(detail?.deliveryMode).toBe("manual");

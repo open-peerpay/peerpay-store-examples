@@ -1872,6 +1872,9 @@ function parseRequestBody(value: unknown, bodyType: HttpBodyType) {
     return String(value ?? "");
   }
   if (bodyType === "form") {
+    if (!text.startsWith("{") && text.includes("&")) {
+      return parseFormQueryText(text);
+    }
     return parseLooseObject(text, "请求体");
   }
   try {
@@ -1879,6 +1882,20 @@ function parseRequestBody(value: unknown, bodyType: HttpBodyType) {
   } catch {
     throw new Error("请求体必须是有效 JSON");
   }
+}
+
+function parseFormQueryText(text: string) {
+  const params = new URLSearchParams(text);
+  const body: Record<string, string | string[]> = {};
+  params.forEach((value, key) => {
+    const current = body[key];
+    if (current === undefined) {
+      body[key] = value;
+      return;
+    }
+    body[key] = Array.isArray(current) ? [...current, value] : [current, value];
+  });
+  return body;
 }
 
 function parseLooseObject(value: unknown, label: string) {

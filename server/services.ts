@@ -1018,12 +1018,33 @@ function encodeFormBody(value: unknown) {
   }
   const params = new URLSearchParams();
   if (value && typeof value === "object" && !Array.isArray(value)) {
+    const recoveredBody = recoverAccidentalFormQueryBody(value as Record<string, unknown>);
+    if (recoveredBody) {
+      return recoveredBody;
+    }
     for (const [key, item] of Object.entries(value)) {
       appendFormValue(params, key, item);
     }
     return params.toString();
   }
   params.set("value", value === undefined || value === null ? "" : String(value));
+  return params.toString();
+}
+
+function recoverAccidentalFormQueryBody(value: Record<string, unknown>) {
+  const entries = Object.entries(value);
+  if (entries.length !== 1) {
+    return null;
+  }
+  const [key, item] = entries[0];
+  if (typeof item !== "string" || !item.startsWith("&") || !item.includes("=")) {
+    return null;
+  }
+  const params = new URLSearchParams();
+  params.append(key, "");
+  new URLSearchParams(item.slice(1)).forEach((paramValue, paramKey) => {
+    params.append(paramKey, paramValue);
+  });
   return params.toString();
 }
 
