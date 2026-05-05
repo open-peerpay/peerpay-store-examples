@@ -5,6 +5,7 @@ export type ContactType = "contact" | "phone" | "qq" | "email";
 export type PaymentChannel = "alipay" | "wechat";
 export type OrderStatus = "pending_payment" | "paid" | "delivered" | "needs_manual" | "failed" | "cancelled";
 export type LogLevel = "info" | "warn" | "error";
+export type HttpBodyType = "json" | "form" | "raw";
 
 export interface HttpExpectation {
   path?: string;
@@ -18,6 +19,7 @@ export interface UpstreamHttpRequest {
   url?: string;
   headers?: Record<string, string>;
   body?: unknown;
+  bodyType?: HttpBodyType;
   timeoutMs?: number;
   expect?: HttpExpectation;
 }

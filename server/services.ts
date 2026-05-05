@@ -12,6 +12,7 @@ import type {
   CreateProductInput,
   DashboardStats,
   DeliveryMode,
+  HttpBodyType,
   LogLevel,
   Order,
   OrderStatus,
@@ -888,8 +889,14 @@ async function runRequest(config: UpstreamHttpRequest, vars: Record<string, stri
   const bodyValue = config.body === undefined ? undefined : renderTemplateObject(config.body, vars);
   const init: RequestInit = { method, headers, signal: controller.signal };
   if (bodyValue !== undefined && method !== "GET") {
-    if (typeof bodyValue === "string") {
-      init.body = bodyValue;
+    const bodyType = config.bodyType ?? inferRequestBodyType(headers, bodyValue);
+    if (bodyType === "form") {
+      init.body = encodeFormBody(bodyValue);
+      init.headers = hasHeader(headers, "content-type")
+        ? headers
+        : { "content-type": "application/x-www-form-urlencoded;charset=UTF-8", ...headers };
+    } else if (bodyType === "raw" || typeof bodyValue === "string") {
+      init.body = typeof bodyValue === "string" ? bodyValue : JSON.stringify(bodyValue);
     } else {
       init.body = JSON.stringify(bodyValue);
       init.headers = { "content-type": "application/json", ...headers };
@@ -906,6 +913,53 @@ async function runRequest(config: UpstreamHttpRequest, vars: Record<string, stri
   }
 }
 
+function inferRequestBodyType(headers: Record<string, string>, bodyValue: unknown): HttpBodyType {
+  const contentType = headerValue(headers, "content-type")?.toLowerCase() ?? "";
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    return "form";
+  }
+  return typeof bodyValue === "string" ? "raw" : "json";
+}
+
+function headerValue(headers: Record<string, string>, name: string) {
+  const target = name.toLowerCase();
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === target);
+  return entry?.[1];
+}
+
+function hasHeader(headers: Record<string, string>, name: string) {
+  return headerValue(headers, name) !== undefined;
+}
+
+function encodeFormBody(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  const params = new URLSearchParams();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [key, item] of Object.entries(value)) {
+      appendFormValue(params, key, item);
+    }
+    return params.toString();
+  }
+  params.set("value", value === undefined || value === null ? "" : String(value));
+  return params.toString();
+}
+
+function appendFormValue(params: URLSearchParams, key: string, value: unknown) {
+  if (value === undefined || value === null) {
+    params.append(key, "");
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      appendFormValue(params, key, item);
+    }
+    return;
+  }
+  params.append(key, typeof value === "object" ? JSON.stringify(value) : String(value));
+}
+
 function checkExpectation(expectation: UpstreamHttpRequest["expect"], data: unknown) {
   if (!expectation) {
     return true;
@@ -914,8 +968,8 @@ function checkExpectation(expectation: UpstreamHttpRequest["expect"], data: unkn
   if ("equals" in expectation) {
     return sameJsonValue(value, expectation.equals);
   }
-  if (expectation.exists === false) {
-    return value === undefined || value === null;
+  if ("exists" in expectation) {
+    return expectation.exists ? value !== undefined && value !== null : value === undefined || value === null;
   }
   return value !== undefined && value !== null && value !== false;
 }

@@ -1,4 +1,4 @@
-import type { ContactType, DeliveryMode, OrderStatus, PaymentChannel, PickupOpenMode, ProductStatus } from "./types";
+import type { ContactType, DeliveryMode, OrderStatus, PaymentChannel, PickupOpenMode, ProductStatus, UpstreamConfig } from "./types";
 
 export const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
   contact: "联系方式",
@@ -65,6 +65,7 @@ export const DEFAULT_UPSTREAM_CONFIG_EXAMPLE = {
     enabled: false,
     method: "POST",
     url: "https://upstream.example/api/orders",
+    bodyType: "json",
     headers: { authorization: "Bearer {{token}}" },
     body: {
       sku: "{{sku}}",
@@ -76,4 +77,4 @@ export const DEFAULT_UPSTREAM_CONFIG_EXAMPLE = {
     deliveryPath: "data.secret",
     remoteOrderIdPath: "data.orderId"
   }
-};
+} satisfies UpstreamConfig;

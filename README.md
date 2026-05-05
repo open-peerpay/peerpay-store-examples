@@ -76,7 +76,7 @@ PeerPay 回调通过 HMAC-SHA256 验签后，Store 才会把订单从 `pending_p
 
 ## 动态上游配置
 
-后台商品发货方式选择“动态上游取货”时，才会显示“动态上游配置 JSON”。配置支持模板变量：
+后台商品发货方式选择“动态上游取货”时，会显示可视化的“动态上游配置”。配置支持模板变量：
 
 - `{{productId}}`
 - `{{productSlug}}`
@@ -90,6 +90,8 @@ PeerPay 回调通过 HMAC-SHA256 验签后，Store 才会把订单从 `pending_p
 - `{{paymentChannel}}`
 - `{{remark}}`
 - `{{amount}}`
+
+每段上游请求都支持 `method`、`url`、`headers`、`body`、`timeoutMs` 和 `expect`。`expect.path` 会从 JSON 返回中取值，`expect.equals` 要求字段值一致，`expect.exists` 可判断字段存在或不存在；不配置 `equals`/`exists` 时要求字段为真值。POST/PUT/PATCH 请求可通过 `bodyType` 选择 `json`、`form` 或 `raw`，其中 `form` 会发送 `application/x-www-form-urlencoded`。
 
 示例：
 
@@ -114,6 +116,7 @@ PeerPay 回调通过 HMAC-SHA256 验签后，Store 才会把订单从 `pending_p
     "enabled": true,
     "method": "POST",
     "url": "https://upstream.example/api/orders",
+    "bodyType": "form",
     "headers": { "authorization": "Bearer {{token}}" },
     "body": {
       "sku": "{{sku}}",

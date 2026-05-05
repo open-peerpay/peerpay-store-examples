@@ -326,6 +326,85 @@ body {
   background-size: cover;
 }
 
+.upstream-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.upstream-editor-heading {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+
+.upstream-editor-heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.upstream-section {
+  min-width: 0;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.upstream-section-green {
+  border-left: 4px solid #16803c;
+}
+
+.upstream-section-amber {
+  border-left: 4px solid #b7791f;
+}
+
+.upstream-section-blue {
+  border-left: 4px solid #2563eb;
+}
+
+.upstream-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.upstream-section-title {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.upstream-section-title span {
+  color: #111827;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.upstream-section-title em {
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.upstream-fields-title {
+  margin-top: 2px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.upstream-expect-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
 .ad-preview-image {
   display: grid;
   place-items: center;
@@ -1177,6 +1256,7 @@ body {
   .metrics-grid,
   .settings-grid,
   .ad-editor-card,
+  .upstream-expect-grid,
   .store-workspace,
   .store-masthead {
     grid-template-columns: 1fr;

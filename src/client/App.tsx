@@ -56,6 +56,8 @@ import {
 import type {
   AdminSessionState,
   DeliveryMode,
+  HttpBodyType,
+  HttpExpectation,
   Order,
   PaymentChannel,
   PickupOpenMode,
@@ -65,7 +67,10 @@ import type {
   StoreAd,
   StoreSettings,
   SystemLog,
-  UpstreamConfig
+  UpstreamConfig,
+  UpstreamHttpRequest,
+  UpstreamOrderRequest,
+  UpstreamStockRequest
 } from "../shared/types";
 import {
   addProductCards,
@@ -161,10 +166,53 @@ const AD_GRADIENT_START_COLOR = "#fffdf7";
 const DEFAULT_AD_GRADIENT_COLOR = "#f0c84b";
 const IMAGE_UPLOAD_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const HTTP_METHOD_OPTIONS = ["GET", "POST", "PUT", "PATCH"].map((value) => ({ value, label: value }));
+const BODY_TYPE_OPTIONS: Array<{ value: HttpBodyType; label: string }> = [
+  { value: "json", label: "JSON" },
+  { value: "form", label: "x-www-form-urlencoded" },
+  { value: "raw", label: "Raw" }
+];
+const EXPECT_MODE_OPTIONS = [
+  { value: "truthy", label: "真值通过" },
+  { value: "equals", label: "等于" },
+  { value: "exists", label: "存在" },
+  { value: "missing", label: "不存在" }
+];
 type AdGradientStyle = CSSProperties & {
   "--ad-gradient-start": string;
   "--ad-gradient-color": string;
 };
+type UpstreamRequestKey = "precheck" | "stock" | "order";
+type ExpectMode = "truthy" | "equals" | "exists" | "missing";
+
+interface UpstreamRequestFormValue {
+  enabled?: boolean;
+  method?: UpstreamHttpRequest["method"];
+  url?: string;
+  timeoutMs?: number;
+  headersText?: string;
+  bodyType?: HttpBodyType;
+  bodyText?: string;
+  expectMode?: ExpectMode;
+  expectPath?: string;
+  expectEquals?: string;
+  stockPath?: string;
+  minStock?: number;
+  availablePath?: string;
+  availableEquals?: string;
+  successPath?: string;
+  successEquals?: string;
+  deliveryPath?: string;
+  remoteOrderIdPath?: string;
+}
+
+interface UpstreamConfigFormValue {
+  sku?: string;
+  token?: string;
+  precheck?: UpstreamRequestFormValue;
+  stock?: UpstreamRequestFormValue;
+  order?: UpstreamRequestFormValue;
+}
 
 function App() {
   const isAdmin = window.location.pathname.startsWith("/admin");
@@ -879,14 +927,14 @@ function ProductDrawer({ product, open, onClose, onSaved }: { product: Product |
         deliveryMode: "card",
         pickupOpenMode: "none",
         sortOrder: 100,
-        upstreamConfigText: JSON.stringify(DEFAULT_UPSTREAM_CONFIG_EXAMPLE, null, 2)
+        upstreamConfig: upstreamConfigToForm(DEFAULT_UPSTREAM_CONFIG_EXAMPLE)
       });
       return;
     }
     form.setFieldsValue({
       ...product,
       price: Number(product.price),
-      upstreamConfigText: JSON.stringify(product.upstreamConfig ?? DEFAULT_UPSTREAM_CONFIG_EXAMPLE, null, 2)
+      upstreamConfig: upstreamConfigToForm(product.upstreamConfig ?? DEFAULT_UPSTREAM_CONFIG_EXAMPLE)
     });
   }, [form, open, product]);
 
@@ -953,13 +1001,160 @@ function ProductDrawer({ product, open, onClose, onSaved }: { product: Product |
         </div>
         <Form.Item noStyle shouldUpdate={(prev, current) => prev.deliveryMode !== current.deliveryMode}>
           {({ getFieldValue }) => getFieldValue("deliveryMode") === "upstream" ? (
-            <Form.Item name="upstreamConfigText" label="动态上游配置 JSON">
-              <TextArea rows={15} spellCheck={false} />
-            </Form.Item>
+            <UpstreamConfigEditor />
           ) : null}
         </Form.Item>
       </Form>
     </Drawer>
+  );
+}
+
+function UpstreamConfigEditor() {
+  return (
+    <section className="upstream-editor">
+      <div className="upstream-editor-heading">
+        <div>
+          <Text strong>动态上游配置</Text>
+          <Text type="secondary">按预检测、库存查询和支付后下单三段维护。</Text>
+        </div>
+      </div>
+      <div className="form-grid">
+        <Form.Item name={["upstreamConfig", "sku"]} label="SKU">
+          <Input placeholder="demo-sku" />
+        </Form.Item>
+        <Form.Item name={["upstreamConfig", "token"]} label="Token">
+          <Input.Password placeholder="secret-token" />
+        </Form.Item>
+      </div>
+
+      <UpstreamRequestSection name="precheck" title="预检测" tone="green">
+        <UpstreamExpectationFields name="precheck" />
+      </UpstreamRequestSection>
+
+      <UpstreamRequestSection name="stock" title="库存查询" tone="amber">
+        <UpstreamExpectationFields name="stock" />
+        <div className="upstream-fields-title">库存判断</div>
+        <div className="form-grid">
+          <Form.Item name={["upstreamConfig", "stock", "stockPath"]} label="库存字段">
+            <Input placeholder="data.stock" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "stock", "minStock"]} label="最小库存">
+            <InputNumber min={0} precision={0} className="full-width" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "stock", "availablePath"]} label="可用字段">
+            <Input placeholder="data.available" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "stock", "availableEquals"]} label="可用等于">
+            <Input placeholder="true" />
+          </Form.Item>
+        </div>
+      </UpstreamRequestSection>
+
+      <UpstreamRequestSection name="order" title="上游下单" tone="blue">
+        <UpstreamExpectationFields name="order" />
+        <div className="upstream-fields-title">发货提取</div>
+        <div className="form-grid">
+          <Form.Item name={["upstreamConfig", "order", "successPath"]} label="成功字段">
+            <Input placeholder="code" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "order", "successEquals"]} label="成功等于">
+            <Input placeholder="0" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "order", "deliveryPath"]} label="发货字段">
+            <Input placeholder="data.secret" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "order", "remoteOrderIdPath"]} label="上游订单号字段">
+            <Input placeholder="data.orderId" />
+          </Form.Item>
+        </div>
+      </UpstreamRequestSection>
+    </section>
+  );
+}
+
+function UpstreamRequestSection({
+  name,
+  title,
+  tone,
+  children
+}: {
+  name: UpstreamRequestKey;
+  title: string;
+  tone: "green" | "amber" | "blue";
+  children: ReactNode;
+}) {
+  return (
+    <div className={`upstream-section upstream-section-${tone}`}>
+      <div className="upstream-section-header">
+        <div className="upstream-section-title">
+          <span>{title}</span>
+          <em>{name}</em>
+        </div>
+        <Form.Item name={["upstreamConfig", name, "enabled"]} valuePropName="checked" noStyle>
+          <Switch checkedChildren="启用" unCheckedChildren="停用" />
+        </Form.Item>
+      </div>
+      <div className="form-grid">
+        <Form.Item name={["upstreamConfig", name, "method"]} label="Method">
+          <Select options={HTTP_METHOD_OPTIONS} />
+        </Form.Item>
+        <Form.Item name={["upstreamConfig", name, "timeoutMs"]} label="超时">
+          <InputNumber min={1000} step={500} precision={0} className="full-width" suffix="ms" />
+        </Form.Item>
+      </div>
+      <Form.Item name={["upstreamConfig", name, "url"]} label="URL">
+        <Input placeholder="https://upstream.example/api" />
+      </Form.Item>
+      <Form.Item name={["upstreamConfig", name, "headersText"]} label="请求头">
+        <TextArea rows={3} spellCheck={false} placeholder={"authorization: Bearer {{token}}\ncontent-type: application/json"} />
+      </Form.Item>
+      <Form.Item noStyle shouldUpdate={(prev, current) => prev.upstreamConfig?.[name]?.method !== current.upstreamConfig?.[name]?.method}>
+        {({ getFieldValue }) => {
+          const method = getFieldValue(["upstreamConfig", name, "method"]);
+          return method === "GET" ? null : (
+            <>
+              <div className="form-grid">
+                <Form.Item name={["upstreamConfig", name, "bodyType"]} label="Body 类型">
+                  <Select options={BODY_TYPE_OPTIONS} />
+                </Form.Item>
+              </div>
+              <Form.Item name={["upstreamConfig", name, "bodyText"]} label="请求体">
+                <TextArea rows={5} spellCheck={false} placeholder={'{"sku":"{{sku}}","orderId":"{{orderId}}"}'} />
+              </Form.Item>
+            </>
+          );
+        }}
+      </Form.Item>
+      {children}
+    </div>
+  );
+}
+
+function UpstreamExpectationFields({ name }: { name: UpstreamRequestKey }) {
+  return (
+    <>
+      <div className="upstream-fields-title">Expect 判断</div>
+      <Form.Item noStyle shouldUpdate={(prev, current) => prev.upstreamConfig?.[name]?.expectMode !== current.upstreamConfig?.[name]?.expectMode}>
+        {({ getFieldValue }) => {
+          const mode = (getFieldValue(["upstreamConfig", name, "expectMode"]) ?? "truthy") as ExpectMode;
+          return (
+            <div className="upstream-expect-grid">
+              <Form.Item name={["upstreamConfig", name, "expectMode"]} label="判断方式">
+                <Select options={EXPECT_MODE_OPTIONS} />
+              </Form.Item>
+              <Form.Item name={["upstreamConfig", name, "expectPath"]} label="返回字段">
+                <Input placeholder="ok" />
+              </Form.Item>
+              {mode === "equals" && (
+                <Form.Item name={["upstreamConfig", name, "expectEquals"]} label="等于">
+                  <Input placeholder="true" />
+                </Form.Item>
+              )}
+            </div>
+          );
+        }}
+      </Form.Item>
+    </>
   );
 }
 
@@ -1536,13 +1731,250 @@ function InfoCell({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function upstreamConfigToForm(config: UpstreamConfig): UpstreamConfigFormValue {
+  return {
+    sku: config.sku ?? "",
+    token: config.token ?? "",
+    precheck: upstreamRequestToForm(config.precheck),
+    stock: upstreamRequestToForm(config.stock),
+    order: upstreamRequestToForm(config.order)
+  };
+}
+
+function upstreamRequestToForm(request?: UpstreamHttpRequest): UpstreamRequestFormValue {
+  const bodyType = request?.bodyType ?? inferUpstreamBodyType(request);
+  return {
+    enabled: Boolean(request?.enabled),
+    method: request?.method ?? "GET",
+    url: request?.url ?? "",
+    timeoutMs: request?.timeoutMs ?? 5000,
+    headersText: formatObjectText(request?.headers),
+    bodyType,
+    bodyText: formatBodyText(request?.body, bodyType),
+    ...expectationToForm(request?.expect),
+    stockPath: (request as UpstreamStockRequest | undefined)?.stockPath ?? "",
+    minStock: (request as UpstreamStockRequest | undefined)?.minStock ?? 1,
+    availablePath: (request as UpstreamStockRequest | undefined)?.availablePath ?? "",
+    availableEquals: formatScalarText((request as UpstreamStockRequest | undefined)?.availableEquals),
+    successPath: (request as UpstreamOrderRequest | undefined)?.successPath ?? "",
+    successEquals: formatScalarText((request as UpstreamOrderRequest | undefined)?.successEquals),
+    deliveryPath: (request as UpstreamOrderRequest | undefined)?.deliveryPath ?? "",
+    remoteOrderIdPath: (request as UpstreamOrderRequest | undefined)?.remoteOrderIdPath ?? ""
+  };
+}
+
+function inferUpstreamBodyType(request?: UpstreamHttpRequest): HttpBodyType {
+  const contentType = Object.entries(request?.headers ?? {})
+    .find(([key]) => key.toLowerCase() === "content-type")?.[1]
+    ?.toLowerCase() ?? "";
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    return "form";
+  }
+  return typeof request?.body === "string" ? "raw" : "json";
+}
+
+function expectationToForm(expectation?: HttpExpectation): Pick<UpstreamRequestFormValue, "expectMode" | "expectPath" | "expectEquals"> {
+  if (!expectation) {
+    return { expectMode: "truthy", expectPath: "", expectEquals: "" };
+  }
+  if ("equals" in expectation) {
+    return { expectMode: "equals", expectPath: expectation.path ?? "", expectEquals: formatScalarText(expectation.equals) };
+  }
+  if (expectation.exists === false) {
+    return { expectMode: "missing", expectPath: expectation.path ?? "", expectEquals: "" };
+  }
+  if (expectation.exists === true) {
+    return { expectMode: "exists", expectPath: expectation.path ?? "", expectEquals: "" };
+  }
+  return { expectMode: "truthy", expectPath: expectation.path ?? "", expectEquals: "" };
+}
+
+function normalizeUpstreamConfigForm(value: unknown): UpstreamConfig {
+  const input = value && typeof value === "object" ? value as UpstreamConfigFormValue : {};
+  return stripEmptyObject({
+    sku: trimToUndefined(input.sku),
+    token: trimToUndefined(input.token),
+    precheck: normalizeUpstreamRequestForm(input.precheck),
+    stock: normalizeUpstreamStockRequestForm(input.stock),
+    order: normalizeUpstreamOrderRequestForm(input.order)
+  }) as UpstreamConfig;
+}
+
+function normalizeUpstreamRequestForm(value: UpstreamRequestFormValue | undefined): UpstreamHttpRequest {
+  const method = normalizeHttpMethod(value?.method);
+  const headers = parseLooseObject(value?.headersText, "请求头");
+  const bodyType = normalizeBodyType(value?.bodyType);
+  const body = method === "GET" ? undefined : parseRequestBody(value?.bodyText, bodyType);
+  return stripEmptyObject({
+    enabled: Boolean(value?.enabled),
+    method,
+    url: trimToUndefined(value?.url),
+    timeoutMs: normalizeOptionalNumber(value?.timeoutMs),
+    headers,
+    bodyType: body === undefined ? undefined : bodyType,
+    body,
+    expect: normalizeExpectationForm(value)
+  }) as UpstreamHttpRequest;
+}
+
+function normalizeUpstreamStockRequestForm(value: UpstreamRequestFormValue | undefined): UpstreamStockRequest {
+  return stripEmptyObject({
+    ...normalizeUpstreamRequestForm(value),
+    stockPath: trimToUndefined(value?.stockPath),
+    minStock: normalizeOptionalNumber(value?.minStock),
+    availablePath: trimToUndefined(value?.availablePath),
+    availableEquals: parseOptionalScalar(value?.availableEquals)
+  }) as UpstreamStockRequest;
+}
+
+function normalizeUpstreamOrderRequestForm(value: UpstreamRequestFormValue | undefined): UpstreamOrderRequest {
+  return stripEmptyObject({
+    ...normalizeUpstreamRequestForm(value),
+    successPath: trimToUndefined(value?.successPath),
+    successEquals: parseOptionalScalar(value?.successEquals),
+    deliveryPath: trimToUndefined(value?.deliveryPath),
+    remoteOrderIdPath: trimToUndefined(value?.remoteOrderIdPath)
+  }) as UpstreamOrderRequest;
+}
+
+function normalizeExpectationForm(value: UpstreamRequestFormValue | undefined): HttpExpectation | undefined {
+  const mode = value?.expectMode ?? "truthy";
+  const path = trimToUndefined(value?.expectPath);
+  if (mode === "equals") {
+    return stripEmptyObject({ path, equals: parseScalar(value?.expectEquals ?? "") }) as HttpExpectation;
+  }
+  if (mode === "exists") {
+    return stripEmptyObject({ path, exists: true }) as HttpExpectation;
+  }
+  if (mode === "missing") {
+    return stripEmptyObject({ path, exists: false }) as HttpExpectation;
+  }
+  return path ? { path } : undefined;
+}
+
+function normalizeHttpMethod(value: unknown): UpstreamHttpRequest["method"] {
+  return value === "POST" || value === "PUT" || value === "PATCH" ? value : "GET";
+}
+
+function normalizeBodyType(value: unknown): HttpBodyType {
+  return value === "form" || value === "raw" ? value : "json";
+}
+
+function parseRequestBody(value: unknown, bodyType: HttpBodyType) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) {
+    return undefined;
+  }
+  if (bodyType === "raw") {
+    return String(value ?? "");
+  }
+  if (bodyType === "form") {
+    return parseLooseObject(text, "请求体");
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("请求体必须是有效 JSON");
+  }
+}
+
+function parseLooseObject(value: unknown, label: string) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) {
+    return undefined;
+  }
+  if (text.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, string>;
+      }
+    } catch {
+      throw new Error(`${label} JSON 格式不正确`);
+    }
+    throw new Error(`${label} 必须是对象`);
+  }
+  const entries = text.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const separatorIndexes = [line.indexOf(":"), line.indexOf("=")].filter((index) => index > 0);
+      if (!separatorIndexes.length) {
+        throw new Error(`${label} 行格式不正确`);
+      }
+      const separatorIndex = Math.min(...separatorIndexes);
+      return [line.slice(0, separatorIndex).trim(), line.slice(separatorIndex + 1).trim()] as const;
+    })
+    .filter(([key]) => key);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function parseOptionalScalar(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text ? parseScalar(text) : undefined;
+}
+
+function parseScalar(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : String(value ?? "");
+  if (!text) {
+    return "";
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function normalizeOptionalNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function trimToUndefined(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || undefined;
+}
+
+function stripEmptyObject<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => {
+    if (item === undefined || item === null || item === "") {
+      return false;
+    }
+    if (typeof item === "object" && !Array.isArray(item) && !Object.keys(item).length) {
+      return false;
+    }
+    return true;
+  }));
+}
+
+function formatObjectText(value: Record<string, string> | undefined) {
+  if (!value || !Object.keys(value).length) {
+    return "";
+  }
+  return Object.entries(value).map(([key, item]) => `${key}: ${item}`).join("\n");
+}
+
+function formatBodyText(value: unknown, bodyType: HttpBodyType) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (bodyType === "raw" && typeof value === "string") {
+    return value;
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+function formatScalarText(value: unknown) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
 function normalizeProductForm(values: Record<string, unknown>) {
   const deliveryMode = values.deliveryMode as DeliveryMode;
-  const upstreamText = String(values.upstreamConfigText ?? "").trim();
-  let upstreamConfig: UpstreamConfig | null = null;
-  if (deliveryMode === "upstream" && upstreamText) {
-    upstreamConfig = JSON.parse(upstreamText) as UpstreamConfig;
-  }
+  const upstreamConfig = deliveryMode === "upstream" ? normalizeUpstreamConfigForm(values.upstreamConfig) : null;
   return {
     slug: values.slug ? String(values.slug) : undefined,
     title: String(values.title ?? ""),
