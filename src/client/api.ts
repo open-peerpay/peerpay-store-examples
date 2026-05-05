@@ -125,6 +125,10 @@ export function loadPublicProduct(slug: string) {
   return request<PublicProduct | null>(`/api/public/products/${encodeURIComponent(slug)}`);
 }
 
+export function loadPublicProductAvailability(slug: string) {
+  return request<PublicProduct | null>(`/api/public/products/${encodeURIComponent(slug)}/availability`);
+}
+
 export function loadPublicProductCaptcha(slug: string) {
   return request<PublicCaptcha>(`/api/public/products/${encodeURIComponent(slug)}/captcha`);
 }

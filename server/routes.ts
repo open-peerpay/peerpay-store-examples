@@ -13,6 +13,7 @@ import {
   dashboardStats,
   findPublicOrdersByContact,
   getPublicProduct,
+  getPublicProductAvailability,
   getPublicProductCaptcha,
   getPublicOrder,
   getStoreSettings,
@@ -135,6 +136,9 @@ export function createApiRoutes(ctx: AppContext) {
     },
     "/api/public/products/:slug/captcha": {
       GET: (req: RouteRequest<{ slug: string }>) => withErrors(async () => json(await getPublicProductCaptcha(ctx, req.params.slug)))
+    },
+    "/api/public/products/:slug/availability": {
+      GET: (req: RouteRequest<{ slug: string }>) => withErrors(async () => json(await getPublicProductAvailability(ctx, req.params.slug)))
     },
     "/api/public/products/:slug": {
       GET: (req: RouteRequest<{ slug: string }>) => withErrors(async () => json(await getPublicProduct(ctx, req.params.slug)))

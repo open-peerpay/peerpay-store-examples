@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   App as AntApp,
   Button,
@@ -83,6 +83,7 @@ import {
   loadAdminSnapshot,
   loadPublicOrder,
   loadPublicProduct,
+  loadPublicProductAvailability,
   loadPublicProductCaptcha,
   loadPublicStore,
   loginAdmin,
@@ -1271,6 +1272,41 @@ function Storefront() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [activeAdIndex, setActiveAdIndex] = useState(0);
+  const availabilityRequestId = useRef(0);
+  const detailRequestId = useRef(0);
+
+  const refreshProductAvailability = useCallback((items: PublicProduct[]) => {
+    const requestId = ++availabilityRequestId.current;
+    void Promise.allSettled(items.map(async (product) => {
+      const fresh = await loadPublicProductAvailability(product.slug);
+      if (!fresh || availabilityRequestId.current !== requestId) {
+        return;
+      }
+      setProducts((current) => current.map((item) => item.slug === product.slug ? fresh : item));
+    }));
+  }, []);
+
+  const openProduct = useCallback((product: PublicProduct) => {
+    const requestId = ++detailRequestId.current;
+    setSelected(product);
+    void loadPublicProduct(product.slug)
+      .then((fresh) => {
+        if (detailRequestId.current !== requestId) {
+          return;
+        }
+        setSelected(fresh ?? null);
+      })
+      .catch((error) => {
+        if (detailRequestId.current === requestId) {
+          message.error(error instanceof Error ? error.message : "商品加载失败");
+        }
+      });
+  }, [message]);
+
+  const closeProduct = useCallback(() => {
+    detailRequestId.current += 1;
+    setSelected(null);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -1278,13 +1314,14 @@ function Storefront() {
       const data = await loadPublicStore();
       setSettings(data.settings);
       setProducts(data.products);
+      refreshProductAvailability(data.products);
       setRecentOrders(await loadRememberedOrders());
     } catch (error) {
       message.error(error instanceof Error ? error.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [message]);
+  }, [message, refreshProductAvailability]);
 
   useEffect(() => {
     void refresh();
@@ -1344,10 +1381,7 @@ function Storefront() {
                 <button
                   className="product-card"
                   key={product.id}
-                  onClick={async () => {
-                    const fresh = await loadPublicProduct(product.slug);
-                    setSelected(fresh ?? product);
-                  }}
+                  onClick={() => openProduct(product)}
                 >
                   <span className="product-card-media">
                     <ProductVisual product={product} card />
@@ -1398,9 +1432,9 @@ function Storefront() {
       <ProductModal
         product={selected}
         defaultPaymentChannel={settings.peerpayPaymentChannel}
-        onClose={() => setSelected(null)}
+        onClose={closeProduct}
         onOrdered={(created) => {
-          setSelected(null);
+          closeProduct();
           setOrder(created);
           setRecentOrders((items) => [created, ...items.filter((item) => item.id !== created.id)]);
         }}

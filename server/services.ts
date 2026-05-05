@@ -125,6 +125,7 @@ interface Availability {
 
 interface AvailabilityOptions {
   skipPrecheck?: boolean;
+  skipStock?: boolean;
 }
 
 type UpstreamRequestKind = "captcha" | "precheck" | "stock" | "order";
@@ -323,7 +324,7 @@ export async function listPublicProducts(ctx: AppContext) {
   const products: PublicProduct[] = [];
   for (const row of rows) {
     const product = productFromRow(ctx, row);
-    const availability = await getProductAvailability(product, { skipPrecheck: true });
+    const availability = await getProductAvailability(product, { skipPrecheck: true, skipStock: true });
     products.push(publicProductFromAvailability(product, availability));
   }
   return products;
@@ -336,6 +337,16 @@ export async function getPublicProduct(ctx: AppContext, slug: string) {
   }
   const product = productFromRow(ctx, row);
   const availability = await getProductAvailability(product);
+  return publicProductFromAvailability(product, availability);
+}
+
+export async function getPublicProductAvailability(ctx: AppContext, slug: string) {
+  const row = ctx.db.query("SELECT * FROM products WHERE slug = ? AND status = 'active'").get(slug) as ProductRow | null;
+  if (!row) {
+    return null;
+  }
+  const product = productFromRow(ctx, row);
+  const availability = await getProductAvailability(product, { skipPrecheck: true });
   return publicProductFromAvailability(product, availability);
 }
 
@@ -937,7 +948,7 @@ async function checkUpstreamAvailability(product: Product, options: Availability
   }
 
   const stock = config.stock;
-  if (stock?.enabled) {
+  if (!options.skipStock && stock?.enabled) {
     if (!stock.url) {
       return { available: false, reason: "库存请求未配置" };
     }

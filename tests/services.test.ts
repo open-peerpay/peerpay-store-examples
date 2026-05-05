@@ -6,6 +6,7 @@ import {
   createProduct,
   findOrdersByContact,
   getPublicProduct,
+  getPublicProductAvailability,
   getPublicProductCaptcha,
   getStoreSettings,
   handlePeerPayCallback,
@@ -131,12 +132,17 @@ describe("store services", () => {
   test("runs upstream precheck on product detail instead of public list", async () => {
     const ctx = createTestContext();
     let precheckCalls = 0;
+    let stockCalls = 0;
     let precheckBody = "";
     const restoreFetch = mockFetch(async (url, init) => {
       if (url.origin === "https://upstream.test" && url.pathname === "/precheck") {
         precheckCalls += 1;
         precheckBody = String(init?.body ?? "");
         return Response.json({ ok: false });
+      }
+      if (url.origin === "https://upstream.test" && url.pathname === "/stock") {
+        stockCalls += 1;
+        return Response.json({ ok: true, stock: 10 });
       }
       return undefined;
     });
@@ -156,6 +162,13 @@ describe("store services", () => {
           body: { password: "&num=1&captcha=&item_id=7" },
           expect: { path: "ok", equals: true }
         },
+        stock: {
+          enabled: true,
+          method: "GET",
+          url: "https://upstream.test/stock",
+          stockPath: "stock",
+          minStock: 1
+        },
         order: { enabled: true, url: "https://upstream.test/order" }
       }
     });
@@ -163,6 +176,7 @@ describe("store services", () => {
     try {
       const list = await listPublicProducts(ctx);
       expect(precheckCalls).toBe(0);
+      expect(stockCalls).toBe(0);
       expect(list[0]?.available).toBe(true);
       expect(list[0]?.availabilityReason).toBeNull();
       expect(list[0]?.deliveryMode).toBe("manual");
@@ -170,6 +184,7 @@ describe("store services", () => {
 
       const detail = await getPublicProduct(ctx, "detail-precheck");
       expect(precheckCalls).toBe(1);
+      expect(stockCalls).toBe(0);
       expect(precheckBody).toBe("password=&num=1&captcha=&item_id=7");
       expect(detail?.available).toBe(false);
       expect(detail?.availabilityReason).toBe("无库存");
@@ -182,8 +197,10 @@ describe("store services", () => {
 
   test("accepts string stock values from upstream stock checks", async () => {
     const ctx = createTestContext();
+    let stockCalls = 0;
     const restoreFetch = mockFetch(async (url) => {
       if (url.origin === "https://upstream.test" && url.pathname === "/stock") {
+        stockCalls += 1;
         return Response.json({ code: 200, data: { stock: "89", stock_state: 3 } });
       }
       return undefined;
@@ -211,6 +228,12 @@ describe("store services", () => {
       const products = await listPublicProducts(ctx);
       expect(products[0]?.available).toBe(true);
       expect(products[0]?.availabilityReason).toBeNull();
+      expect(stockCalls).toBe(0);
+
+      const product = await getPublicProductAvailability(ctx, "string-stock");
+      expect(stockCalls).toBe(1);
+      expect(product?.available).toBe(true);
+      expect(product?.availabilityReason).toBeNull();
     } finally {
       restoreFetch();
     }
