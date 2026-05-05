@@ -74,6 +74,8 @@ function migrate(db: Database) {
       pickup_open_mode TEXT NOT NULL CHECK (pickup_open_mode IN ('none', 'iframe', 'new_tab')),
       upstream_order_id TEXT,
       upstream_response TEXT,
+      upstream_captcha TEXT,
+      upstream_captcha_token TEXT,
       manual_reason TEXT,
       created_at TEXT NOT NULL,
       paid_at TEXT,
@@ -115,6 +117,8 @@ function migrate(db: Database) {
   ensureColumn(db, "orders", "peerpay_payment_channel", "ALTER TABLE orders ADD COLUMN peerpay_payment_channel TEXT");
   ensureColumn(db, "orders", "peerpay_callback_secret", "ALTER TABLE orders ADD COLUMN peerpay_callback_secret TEXT");
   ensureColumn(db, "orders", "remark", "ALTER TABLE orders ADD COLUMN remark TEXT");
+  ensureColumn(db, "orders", "upstream_captcha", "ALTER TABLE orders ADD COLUMN upstream_captcha TEXT");
+  ensureColumn(db, "orders", "upstream_captcha_token", "ALTER TABLE orders ADD COLUMN upstream_captcha_token TEXT");
 }
 
 function rebuildOrdersTableIfNeeded(db: Database) {

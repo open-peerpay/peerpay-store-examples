@@ -38,9 +38,17 @@ export interface UpstreamOrderRequest extends UpstreamHttpRequest {
   remoteOrderIdPath?: string;
 }
 
+export interface UpstreamCaptchaRequest extends UpstreamHttpRequest {
+  imageUrlPath?: string;
+  imageBase64Path?: string;
+  mimeTypePath?: string;
+  tokenPath?: string;
+}
+
 export interface UpstreamConfig {
   sku?: string;
   token?: string;
+  captcha?: UpstreamCaptchaRequest;
   precheck?: UpstreamHttpRequest;
   stock?: UpstreamStockRequest;
   order?: UpstreamOrderRequest;
@@ -69,6 +77,14 @@ export interface Product {
 export interface PublicProduct extends Product {
   available: boolean;
   availabilityReason: string | null;
+  captchaRequired: boolean;
+}
+
+export interface PublicCaptcha {
+  imageBase64: string;
+  imageDataUrl: string;
+  mimeType: string;
+  token: string | null;
 }
 
 export interface ProductCard {
@@ -103,6 +119,8 @@ export interface Order {
   pickupOpenMode: PickupOpenMode;
   upstreamOrderId: string | null;
   upstreamResponse: unknown;
+  upstreamCaptcha: string | null;
+  upstreamCaptchaToken: string | null;
   manualReason: string | null;
   createdAt: string;
   paidAt: string | null;
@@ -189,6 +207,8 @@ export interface CreateOrderInput {
   contactValue: string;
   paymentChannel: PaymentChannel;
   remark?: string;
+  captcha?: string;
+  captchaToken?: string;
 }
 
 export interface CreateOrderResult {

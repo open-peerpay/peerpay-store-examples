@@ -11,6 +11,7 @@ import type {
   Product,
   ProductCard,
   ProductStatus,
+  PublicCaptcha,
   PublicProduct,
   StoreSettings,
   SystemLog,
@@ -122,6 +123,10 @@ export function loadPublicStore() {
 
 export function loadPublicProduct(slug: string) {
   return request<PublicProduct | null>(`/api/public/products/${encodeURIComponent(slug)}`);
+}
+
+export function loadPublicProductCaptcha(slug: string) {
+  return request<PublicCaptcha>(`/api/public/products/${encodeURIComponent(slug)}/captcha`);
 }
 
 export function createPublicOrder(input: CreateOrderInput) {

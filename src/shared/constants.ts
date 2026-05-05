@@ -48,6 +48,14 @@ export const DEFAULT_LOOKUP_METHODS: ContactType[] = ["contact", "phone", "qq", 
 
 export const DEFAULT_UPSTREAM_CONFIG_EXAMPLE = {
   sku: "demo-sku",
+  captcha: {
+    enabled: false,
+    method: "GET",
+    url: "https://upstream.example/api/captcha",
+    imageBase64Path: "data.image",
+    mimeTypePath: "data.mimeType",
+    tokenPath: "data.token"
+  },
   precheck: {
     enabled: false,
     method: "GET",

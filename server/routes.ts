@@ -13,6 +13,7 @@ import {
   dashboardStats,
   findPublicOrdersByContact,
   getPublicProduct,
+  getPublicProductCaptcha,
   getPublicOrder,
   getStoreSettings,
   handlePeerPayCallback,
@@ -131,6 +132,9 @@ export function createApiRoutes(ctx: AppContext) {
     },
     "/api/public/store": {
       GET: () => withErrors(async () => json({ settings: getStoreSettings(ctx), products: await listPublicProducts(ctx) }))
+    },
+    "/api/public/products/:slug/captcha": {
+      GET: (req: RouteRequest<{ slug: string }>) => withErrors(async () => json(await getPublicProductCaptcha(ctx, req.params.slug)))
     },
     "/api/public/products/:slug": {
       GET: (req: RouteRequest<{ slug: string }>) => withErrors(async () => json(await getPublicProduct(ctx, req.params.slug)))

@@ -6,6 +6,7 @@ import {
   createProduct,
   findOrdersByContact,
   getPublicProduct,
+  getPublicProductCaptcha,
   getStoreSettings,
   handlePeerPayCallback,
   listPublicProducts,
@@ -210,6 +211,184 @@ describe("store services", () => {
       const products = await listPublicProducts(ctx);
       expect(products[0]?.available).toBe(true);
       expect(products[0]?.availabilityReason).toBeNull();
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test("fetches upstream captcha and sends captcha variables with upstream order", async () => {
+    const ctx = createTestContext();
+    let upstreamOrderBody = "";
+    const restoreFetch = mockFetch(async (url, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET" && url.origin === "https://upstream.test" && url.pathname === "/captcha") {
+        return Response.json({ code: 200, data: { image: "data:image/png;base64,Y2FwdGNoYQ==", token: "captcha-token-001" } });
+      }
+      if (method === "POST" && url.origin === "http://peerpay.test" && url.pathname === "/api/orders") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { merchantOrderId: string; amount: string; paymentChannel: string };
+        return Response.json({
+          data: {
+            id: `pay_${body.merchantOrderId}`,
+            merchantOrderId: body.merchantOrderId,
+            payUrl: `${url.origin}/pay/pay_${body.merchantOrderId}`,
+            actualAmount: body.amount,
+            actualAmountCents: Math.round(Number(body.amount) * 100),
+            paymentChannel: body.paymentChannel
+          }
+        }, { status: 201 });
+      }
+      if (method === "POST" && url.origin === "https://upstream.test" && url.pathname === "/order") {
+        upstreamOrderBody = String(init?.body ?? "");
+        return Response.json({ ok: true, data: { secret: "CAPTCHA-CARD-001" } });
+      }
+      return undefined;
+    });
+    createProduct(ctx, {
+      title: "验证码上游",
+      slug: "captcha-upstream",
+      price: "30.00",
+      status: "active",
+      deliveryMode: "upstream",
+      upstreamConfig: {
+        sku: "captcha-sku",
+        captcha: {
+          enabled: true,
+          method: "GET",
+          url: "https://upstream.test/captcha",
+          imageBase64Path: "data.image",
+          tokenPath: "data.token"
+        },
+        order: {
+          enabled: true,
+          method: "POST",
+          url: "https://upstream.test/order",
+          bodyType: "form",
+          body: {
+            sku: "{{sku}}",
+            captcha: "{{captcha}}",
+            captchaToken: "{{captchaToken}}"
+          },
+          expect: { path: "ok", equals: true },
+          deliveryPath: "data.secret"
+        }
+      }
+    });
+
+    try {
+      const publicProduct = await getPublicProduct(ctx, "captcha-upstream");
+      expect(publicProduct?.captchaRequired).toBe(true);
+
+      const captcha = await getPublicProductCaptcha(ctx, "captcha-upstream");
+      expect(captcha.imageBase64).toBe("Y2FwdGNoYQ==");
+      expect(captcha.imageDataUrl).toBe("data:image/png;base64,Y2FwdGNoYQ==");
+      expect(captcha.token).toBe("captcha-token-001");
+
+      ctx.db.query("INSERT INTO app_settings(key, value, updated_at) VALUES ('peerpay_base_url', ?, ?)").run("http://peerpay.test", new Date().toISOString());
+      const result = await createOrder(ctx, {
+        slug: "captcha-upstream",
+        contactValue: "buyer@example.com",
+        paymentChannel: "alipay",
+        captcha: "A7K9",
+        captchaToken: captcha.token ?? undefined
+      }, "http://store.test/api/public/orders");
+      const secret = ctx.db.query("SELECT peerpay_callback_secret AS secret FROM orders WHERE id = ?").get(result.order.id) as { secret: string };
+      const payload = {
+        orderId: result.order.peerpayOrderId!,
+        merchantOrderId: result.order.id,
+        paymentAccountCode: "alipay-a",
+        paymentChannel: "alipay" as const,
+        status: "paid",
+        requestedAmount: "30.00",
+        actualAmount: "30.00",
+        paidAt: "2026-05-04T00:00:00.000Z"
+      };
+      const sign = signPeerPayPayload(payload, secret.secret);
+      const callback = await handlePeerPayCallback(ctx, { ...payload, sign }, sign);
+
+      expect(callback.order.status).toBe("delivered");
+      expect(callback.order.deliveryPayload).toBe("CAPTCHA-CARD-001");
+      expect(upstreamOrderBody).toContain("captcha=A7K9");
+      expect(upstreamOrderBody).toContain("captchaToken=captcha-token-001");
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test("accepts direct base64 captcha responses without a token", async () => {
+    const ctx = createTestContext();
+    const restoreFetch = mockFetch(async (url, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET" && url.origin === "https://upstream.test" && url.pathname === "/captcha-direct") {
+        return new Response("Y2FwdGNoYQ==", { headers: { "content-type": "text/plain" } });
+      }
+      return undefined;
+    });
+    createProduct(ctx, {
+      title: "直接验证码上游",
+      slug: "captcha-direct-upstream",
+      price: "30.00",
+      status: "active",
+      deliveryMode: "upstream",
+      upstreamConfig: {
+        captcha: {
+          enabled: true,
+          method: "GET",
+          url: "https://upstream.test/captcha-direct"
+        },
+        order: {
+          enabled: true,
+          method: "POST",
+          url: "https://upstream.test/order"
+        }
+      }
+    });
+
+    try {
+      const captcha = await getPublicProductCaptcha(ctx, "captcha-direct-upstream");
+      expect(captcha.imageBase64).toBe("Y2FwdGNoYQ==");
+      expect(captcha.imageDataUrl).toBe("data:image/png;base64,Y2FwdGNoYQ==");
+      expect(captcha.token).toBeNull();
+    } finally {
+      restoreFetch();
+    }
+  });
+
+  test("accepts direct binary image captcha responses without a token", async () => {
+    const ctx = createTestContext();
+    const pngHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const restoreFetch = mockFetch(async (url, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET" && url.origin === "https://upstream.test" && url.pathname === "/captcha-image") {
+        return new Response(pngHeader, { headers: { "content-type": "image/PNG" } });
+      }
+      return undefined;
+    });
+    createProduct(ctx, {
+      title: "图片验证码上游",
+      slug: "captcha-image-upstream",
+      price: "30.00",
+      status: "active",
+      deliveryMode: "upstream",
+      upstreamConfig: {
+        captcha: {
+          enabled: true,
+          method: "GET",
+          url: "https://upstream.test/captcha-image"
+        },
+        order: {
+          enabled: true,
+          method: "POST",
+          url: "https://upstream.test/order"
+        }
+      }
+    });
+
+    try {
+      const captcha = await getPublicProductCaptcha(ctx, "captcha-image-upstream");
+      expect(captcha.imageBase64).toBe("iVBORw0KGgo=");
+      expect(captcha.imageDataUrl).toBe("data:image/png;base64,iVBORw0KGgo=");
+      expect(captcha.mimeType).toBe("image/png");
+      expect(captcha.token).toBeNull();
     } finally {
       restoreFetch();
     }

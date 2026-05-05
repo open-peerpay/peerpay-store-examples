@@ -22,11 +22,13 @@ import type {
   Product,
   ProductCard,
   ProductStatus,
+  PublicCaptcha,
   PublicProduct,
   StoreAd,
   StoreSettings,
   SystemLog,
   UpdateProductInput,
+  UpstreamCaptchaRequest,
   UpstreamConfig,
   UpstreamHttpRequest,
   UpstreamOrderRequest,
@@ -79,6 +81,8 @@ interface OrderRow {
   pickup_open_mode: PickupOpenMode;
   upstream_order_id: string | null;
   upstream_response: string | null;
+  upstream_captcha: string | null;
+  upstream_captcha_token: string | null;
   manual_reason: string | null;
   created_at: string;
   paid_at: string | null;
@@ -110,6 +114,8 @@ interface RequestResult {
   status: number;
   data: unknown;
   text: string;
+  bodyBase64?: string;
+  mimeType?: string;
 }
 
 interface Availability {
@@ -121,7 +127,7 @@ interface AvailabilityOptions {
   skipPrecheck?: boolean;
 }
 
-type UpstreamRequestKind = "precheck" | "stock" | "order";
+type UpstreamRequestKind = "captcha" | "precheck" | "stock" | "order";
 
 interface PeerPayCreateOrderResponse {
   id: string;
@@ -339,8 +345,24 @@ function publicProductFromAvailability(product: Product, availability: Availabil
     deliveryMode: product.deliveryMode === "upstream" ? "manual" : product.deliveryMode,
     upstreamConfig: null,
     available: availability.available,
-    availabilityReason: availability.available ? null : "无库存"
+    availabilityReason: availability.available ? null : "无库存",
+    captchaRequired: product.deliveryMode === "upstream" && Boolean(product.upstreamConfig?.captcha?.enabled)
   };
+}
+
+export async function getPublicProductCaptcha(ctx: AppContext, slug: string): Promise<PublicCaptcha> {
+  const product = getOrderProduct(ctx, { slug, contactValue: "captcha", paymentChannel: "alipay" });
+  if (!product || product.status !== "active") {
+    throw apiError(404, "商品不存在或未上架");
+  }
+  const captcha = product.upstreamConfig?.captcha;
+  if (product.deliveryMode !== "upstream" || !captcha?.enabled) {
+    throw apiError(404, "验证码未配置");
+  }
+  if (!captcha.url) {
+    throw apiError(400, "验证码请求未配置");
+  }
+  return fetchUpstreamCaptcha(captcha, productTemplateVars(product));
 }
 
 export function createProduct(ctx: AppContext, input: CreateProductInput) {
@@ -470,12 +492,17 @@ export async function createOrder(ctx: AppContext, input: CreateOrderInput, requ
   const contactType = detectContactType(contactValue);
   const paymentChannel = normalizeOrderPaymentChannel(input.paymentChannel);
   const remark = normalizeOrderRemark(input.remark);
+  const captcha = normalizeCaptchaValue(input.captcha);
+  const captchaToken = normalizeCaptchaValue(input.captchaToken);
+  if (product.deliveryMode === "upstream" && product.upstreamConfig?.captcha?.enabled && !captcha) {
+    throw apiError(400, "请输入验证码");
+  }
   const availability = await getProductAvailability(product);
   if (!availability.available) {
     throw apiError(409, availability.reason ?? "商品暂无库存");
   }
 
-  const order = insertOrder(ctx, product, contactType, contactValue, paymentChannel, remark);
+  const order = insertOrder(ctx, product, contactType, contactValue, paymentChannel, remark, captcha, captchaToken);
   try {
     const paidOrder = await createPeerPayPayment(ctx, order, product, requestUrl);
     return { order: paidOrder, paymentUrl: paidOrder.peerpayPayUrl, rememberedAt: nowIso() };
@@ -535,6 +562,8 @@ export function publicOrderFromOrder(order: Order): Order {
     deliveryMode: order.deliveryMode === "upstream" ? "manual" : order.deliveryMode,
     upstreamOrderId: null,
     upstreamResponse: null,
+    upstreamCaptcha: null,
+    upstreamCaptchaToken: null,
     manualReason: order.manualReason ? "订单处理中，请联系商家处理" : null
   };
 }
@@ -783,16 +812,25 @@ function fulfillCardOrder(ctx: AppContext, order: Order) {
   return delivered;
 }
 
-function insertOrder(ctx: AppContext, product: Product, contactType: ContactType, contactValue: string, paymentChannel: PaymentChannel, remark: string | null) {
+function insertOrder(
+  ctx: AppContext,
+  product: Product,
+  contactType: ContactType,
+  contactValue: string,
+  paymentChannel: PaymentChannel,
+  remark: string | null,
+  upstreamCaptcha: string | null,
+  upstreamCaptchaToken: string | null
+) {
   const id = createOrderId();
   const at = nowIso();
   ctx.db.query(`
     INSERT INTO orders (
       id, product_id, product_slug, product_title, amount_cents, contact_type,
       contact_value, remark, status, peerpay_payment_channel, delivery_mode, pickup_url, pickup_open_mode,
-      created_at, updated_at
+      upstream_captcha, upstream_captcha_token, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     product.id,
@@ -806,6 +844,8 @@ function insertOrder(ctx: AppContext, product: Product, contactType: ContactType
     product.deliveryMode,
     product.pickupUrl,
     product.pickupOpenMode,
+    upstreamCaptcha,
+    upstreamCaptchaToken,
     at,
     at
   );
@@ -913,6 +953,114 @@ async function checkUpstreamAvailability(product: Product, options: Availability
   return { available: true, reason: null };
 }
 
+async function fetchUpstreamCaptcha(config: UpstreamCaptchaRequest, vars: Record<string, string>): Promise<PublicCaptcha> {
+  const result = await runRequest(config, vars, "captcha");
+  if (!result.ok) {
+    throw apiError(502, `验证码请求 HTTP ${result.status}`);
+  }
+  const mimeType = stringifyValue(config.mimeTypePath ? getPath(result.data, config.mimeTypePath) : null) ?? "image/png";
+  const token = stringifyValue(config.tokenPath ? getPath(result.data, config.tokenPath) : null);
+  if (!config.imageBase64Path && !config.imageUrlPath && result.bodyBase64) {
+    return captchaFromBase64(result.bodyBase64, result.mimeType ?? mimeType, token);
+  }
+  const base64Value = stringifyValue(config.imageBase64Path ? getPath(result.data, config.imageBase64Path) : directStringResponse(result.data));
+  if (base64Value) {
+    return captchaFromBase64(base64Value, mimeType, token);
+  }
+
+  const imageUrl = stringifyValue(config.imageUrlPath ? getPath(result.data, config.imageUrlPath) : null);
+  if (imageUrl) {
+    return fetchCaptchaImageUrl(config, vars, imageUrl, token);
+  }
+
+  throw apiError(502, "验证码响应缺少图片字段");
+}
+
+function captchaFromBase64(value: string, fallbackMimeType: string, token: string | null): PublicCaptcha {
+  const normalizedValue = value.trim();
+  const dataUrlMatch = normalizedValue.match(/^data:([^;,]+);base64,(.+)$/);
+  const mimeType = dataUrlMatch?.[1] ?? fallbackMimeType;
+  const imageBase64 = dataUrlMatch?.[2] ?? normalizedValue;
+  return {
+    imageBase64,
+    imageDataUrl: `data:${mimeType};base64,${imageBase64}`,
+    mimeType,
+    token
+  };
+}
+
+function directStringResponse(data: unknown) {
+  return typeof data === "string" ? data : null;
+}
+
+function normalizeMimeType(contentType: string | null) {
+  return contentType?.split(";")[0]?.trim().toLowerCase() || null;
+}
+
+function isBinaryResponse(kind: UpstreamRequestKind, mimeType: string | null, bytes: ArrayBuffer) {
+  if (mimeType?.startsWith("image/")) {
+    return true;
+  }
+  return kind === "captcha" && looksLikeImage(bytes);
+}
+
+function looksLikeImage(bytes: ArrayBuffer) {
+  const data = new Uint8Array(bytes);
+  return (
+    hasPrefix(data, [0x89, 0x50, 0x4e, 0x47])
+    || hasPrefix(data, [0xff, 0xd8, 0xff])
+    || hasPrefix(data, [0x47, 0x49, 0x46, 0x38])
+    || hasPrefix(data, [0x52, 0x49, 0x46, 0x46])
+  );
+}
+
+function hasPrefix(data: Uint8Array, prefix: number[]) {
+  return prefix.every((byte, index) => data[index] === byte);
+}
+
+async function fetchCaptchaImageUrl(config: UpstreamCaptchaRequest, vars: Record<string, string>, imageUrl: string, token: string | null): Promise<PublicCaptcha> {
+  const requestUrl = renderTemplate(config.url ?? "", vars);
+  const url = new URL(renderTemplate(imageUrl, vars), requestUrl).toString();
+  const headers = renderTemplateObject(config.headers ?? {}, vars) as Record<string, string>;
+  const startedAt = Date.now();
+  logUpstream("request", { kind: "captcha", method: "GET", url, headers });
+  try {
+    const response = await fetch(url, { headers });
+    const bytes = await response.arrayBuffer();
+    const mimeType = response.headers.get("content-type")?.split(";")[0] || "image/png";
+    const imageBase64 = Buffer.from(bytes).toString("base64");
+    logUpstream("response", {
+      kind: "captcha",
+      method: "GET",
+      url,
+      ok: response.ok,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      headers: Object.fromEntries(response.headers.entries()),
+      bytes: bytes.byteLength,
+      bodyBase64: imageBase64
+    });
+    if (!response.ok) {
+      throw apiError(502, `验证码图片 HTTP ${response.status}`);
+    }
+    return {
+      imageBase64,
+      imageDataUrl: `data:${mimeType};base64,${imageBase64}`,
+      mimeType,
+      token
+    };
+  } catch (error) {
+    logUpstream("error", {
+      kind: "captcha",
+      method: "GET",
+      url,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error
+    });
+    throw error;
+  }
+}
+
 async function runRequest(config: UpstreamHttpRequest, vars: Record<string, string>, kind: UpstreamRequestKind): Promise<RequestResult> {
   if (!config.url) {
     throw new Error("请求 URL 未配置");
@@ -957,7 +1105,29 @@ async function runRequest(config: UpstreamHttpRequest, vars: Record<string, stri
 
   try {
     const response = await fetch(url, init);
-    const text = await response.text();
+    const bytes = await response.arrayBuffer();
+    const headers = Object.fromEntries(response.headers.entries());
+    const contentType = response.headers.get("content-type") ?? "";
+    const mimeType = normalizeMimeType(contentType);
+    if (isBinaryResponse(kind, mimeType, bytes)) {
+      const bodyBase64 = Buffer.from(bytes).toString("base64");
+      logUpstream("response", {
+        kind,
+        method,
+        url,
+        ok: response.ok,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+        headers,
+        bodyType: "binary",
+        mimeType,
+        bytes: bytes.byteLength,
+        bodyBase64
+      });
+      return { ok: response.ok, status: response.status, data: null, text: "", bodyBase64, mimeType: mimeType ?? undefined };
+    }
+
+    const text = new TextDecoder().decode(bytes);
     const data = parseMaybeJson(text);
     logUpstream("response", {
       kind,
@@ -966,7 +1136,7 @@ async function runRequest(config: UpstreamHttpRequest, vars: Record<string, stri
       ok: response.ok,
       status: response.status,
       durationMs: Date.now() - startedAt,
-      headers: Object.fromEntries(response.headers.entries()),
+      headers,
       text,
       data
     });
@@ -1171,6 +1341,8 @@ function orderFromRow(row: OrderRow): Order {
     pickupOpenMode: row.pickup_open_mode,
     upstreamOrderId: row.upstream_order_id,
     upstreamResponse: parseJson<unknown>(row.upstream_response, null),
+    upstreamCaptcha: row.upstream_captcha,
+    upstreamCaptchaToken: row.upstream_captcha_token,
     manualReason: row.manual_reason,
     createdAt: row.created_at,
     paidAt: row.paid_at,
@@ -1276,6 +1448,14 @@ function normalizeOrderRemark(value: unknown) {
   const text = typeof value === "string" ? value.trim() : "";
   if (text.length > 500) {
     throw apiError(400, "备注不能超过 500 字");
+  }
+  return text || null;
+}
+
+function normalizeCaptchaValue(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (text.length > 200) {
+    throw apiError(400, "验证码不能超过 200 字");
   }
   return text || null;
 }
@@ -1429,7 +1609,9 @@ function orderTemplateVars(product: Product, order: Order) {
     contact: order.contactValue,
     paymentChannel: order.peerpayPaymentChannel ?? "",
     remark: order.remark ?? "",
-    amount: order.amount
+    amount: order.amount,
+    captcha: order.upstreamCaptcha ?? "",
+    captchaToken: order.upstreamCaptchaToken ?? ""
   };
 }
 

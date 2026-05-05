@@ -63,10 +63,12 @@ import type {
   PickupOpenMode,
   Product,
   ProductStatus,
+  PublicCaptcha,
   PublicProduct,
   StoreAd,
   StoreSettings,
   SystemLog,
+  UpstreamCaptchaRequest,
   UpstreamConfig,
   UpstreamHttpRequest,
   UpstreamOrderRequest,
@@ -81,6 +83,7 @@ import {
   loadAdminSnapshot,
   loadPublicOrder,
   loadPublicProduct,
+  loadPublicProductCaptcha,
   loadPublicStore,
   loginAdmin,
   logoutAdmin,
@@ -188,7 +191,7 @@ type AdGradientStyle = CSSProperties & {
   "--ad-gradient-start": string;
   "--ad-gradient-color": string;
 };
-type UpstreamRequestKey = "precheck" | "stock" | "order";
+type UpstreamRequestKey = "captcha" | "precheck" | "stock" | "order";
 type ExpectMode = "truthy" | "equals" | "exists" | "missing";
 type ScalarValueType = "string" | "number" | "boolean" | "json";
 
@@ -209,6 +212,10 @@ interface UpstreamRequestFormValue {
   availablePath?: string;
   availableEquals?: string;
   availableEqualsType?: ScalarValueType;
+  imageUrlPath?: string;
+  imageBase64Path?: string;
+  mimeTypePath?: string;
+  tokenPath?: string;
   successPath?: string;
   successEquals?: string;
   successEqualsType?: ScalarValueType;
@@ -219,6 +226,7 @@ interface UpstreamRequestFormValue {
 interface UpstreamConfigFormValue {
   sku?: string;
   token?: string;
+  captcha?: UpstreamRequestFormValue;
   precheck?: UpstreamRequestFormValue;
   stock?: UpstreamRequestFormValue;
   order?: UpstreamRequestFormValue;
@@ -1037,6 +1045,24 @@ function UpstreamConfigEditor() {
         </Form.Item>
       </div>
 
+      <UpstreamRequestSection name="captcha" title="验证码" tone="green">
+        <div className="upstream-fields-title">图片提取</div>
+        <div className="form-grid">
+          <Form.Item name={["upstreamConfig", "captcha", "imageBase64Path"]} label="Base64 字段">
+            <Input placeholder="data.image；留空=整个响应/图片" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "captcha", "imageUrlPath"]} label="图片 URL 字段">
+            <Input placeholder="data.url" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "captcha", "mimeTypePath"]} label="MIME 字段">
+            <Input placeholder="data.mimeType" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "captcha", "tokenPath"]} label="Token 字段">
+            <Input placeholder="data.token" />
+          </Form.Item>
+        </div>
+      </UpstreamRequestSection>
+
       <UpstreamRequestSection name="precheck" title="预检测" tone="green">
         <UpstreamExpectationFields name="precheck" />
       </UpstreamRequestSection>
@@ -1438,12 +1464,35 @@ function ProductModal({
   const { message } = AntApp.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [captcha, setCaptcha] = useState<PublicCaptcha | null>(null);
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+
+  const refreshCaptcha = useCallback(async (slug: string) => {
+    setCaptchaLoading(true);
+    try {
+      setCaptcha(await loadPublicProductCaptcha(slug));
+      form.setFieldValue("captcha", "");
+    } catch (error) {
+      setCaptcha(null);
+      message.error(error instanceof Error ? error.message : "验证码加载失败");
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, [form, message]);
 
   useEffect(() => {
     if (product) {
       form.setFieldValue("paymentChannel", defaultPaymentChannel);
+      form.setFieldValue("captcha", "");
+      setCaptcha(null);
+      if (product.available && product.captchaRequired) {
+        void refreshCaptcha(product.slug);
+      }
+      return;
     }
-  }, [defaultPaymentChannel, form, product]);
+    setCaptcha(null);
+    setCaptchaLoading(false);
+  }, [defaultPaymentChannel, form, product, refreshCaptcha]);
 
   return (
     <StoreDialog open={Boolean(product)} onClose={onClose} labelledBy="product-dialog-title">
@@ -1472,7 +1521,9 @@ function ProductModal({
                     slug: product.slug,
                     contactValue: values.contactValue,
                     paymentChannel: values.paymentChannel,
-                    remark: values.remark
+                    remark: values.remark,
+                    captcha: values.captcha,
+                    captchaToken: captcha?.token ?? undefined
                   });
                   await rememberOrder(result.order.id);
                   if (result.paymentUrl) {
@@ -1502,6 +1553,25 @@ function ProductModal({
                   </Radio.Button>
                 </Radio.Group>
               </Form.Item>
+              {product.captchaRequired && (
+                <Form.Item label="验证码" required>
+                  <div className="captcha-field">
+                    <div className="captcha-image-box">
+                      {captcha?.imageDataUrl ? (
+                        <img src={captcha.imageDataUrl} alt="验证码" />
+                      ) : (
+                        <span>{captchaLoading ? "加载中" : "验证码"}</span>
+                      )}
+                    </div>
+                    <Button className="store-button store-button-compact" icon={<ReloadOutlined />} loading={captchaLoading} onClick={() => refreshCaptcha(product.slug)}>
+                      刷新
+                    </Button>
+                    <Form.Item name="captcha" noStyle rules={[{ required: true, whitespace: true, message: "请输入验证码" }]}>
+                      <Input size="large" placeholder="输入验证码" autoComplete="off" />
+                    </Form.Item>
+                  </div>
+                </Form.Item>
+              )}
               <Form.Item name="remark" label="备注" extra="可填写发货偏好、人工处理说明或其他需要核对的信息。" rules={[{ max: 500, message: "备注不能超过 500 字" }]}>
                 <TextArea rows={3} maxLength={500} showCount placeholder="选填，最多 500 字" />
               </Form.Item>
@@ -1759,6 +1829,7 @@ function upstreamConfigToForm(config: UpstreamConfig): UpstreamConfigFormValue {
   return {
     sku: config.sku ?? "",
     token: config.token ?? "",
+    captcha: upstreamRequestToForm(config.captcha),
     precheck: upstreamRequestToForm(config.precheck),
     stock: upstreamRequestToForm(config.stock),
     order: upstreamRequestToForm(config.order)
@@ -1781,6 +1852,10 @@ function upstreamRequestToForm(request?: UpstreamHttpRequest): UpstreamRequestFo
     availablePath: (request as UpstreamStockRequest | undefined)?.availablePath ?? "",
     availableEquals: formatScalarText((request as UpstreamStockRequest | undefined)?.availableEquals),
     availableEqualsType: scalarValueType((request as UpstreamStockRequest | undefined)?.availableEquals),
+    imageUrlPath: (request as UpstreamCaptchaRequest | undefined)?.imageUrlPath ?? "",
+    imageBase64Path: (request as UpstreamCaptchaRequest | undefined)?.imageBase64Path ?? "",
+    mimeTypePath: (request as UpstreamCaptchaRequest | undefined)?.mimeTypePath ?? "",
+    tokenPath: (request as UpstreamCaptchaRequest | undefined)?.tokenPath ?? "",
     successPath: (request as UpstreamOrderRequest | undefined)?.successPath ?? "",
     successEquals: formatScalarText((request as UpstreamOrderRequest | undefined)?.successEquals),
     successEqualsType: scalarValueType((request as UpstreamOrderRequest | undefined)?.successEquals),
@@ -1825,6 +1900,7 @@ function normalizeUpstreamConfigForm(value: unknown): UpstreamConfig {
   return stripEmptyObject({
     sku: trimToUndefined(input.sku),
     token: trimToUndefined(input.token),
+    captcha: normalizeUpstreamCaptchaRequestForm(input.captcha),
     precheck: normalizeUpstreamRequestForm(input.precheck),
     stock: normalizeUpstreamStockRequestForm(input.stock),
     order: normalizeUpstreamOrderRequestForm(input.order)
@@ -1856,6 +1932,16 @@ function normalizeUpstreamStockRequestForm(value: UpstreamRequestFormValue | und
     availablePath: trimToUndefined(value?.availablePath),
     availableEquals: parseOptionalScalar(value?.availableEquals, value?.availableEqualsType)
   }) as UpstreamStockRequest;
+}
+
+function normalizeUpstreamCaptchaRequestForm(value: UpstreamRequestFormValue | undefined): UpstreamCaptchaRequest {
+  return stripEmptyObject({
+    ...normalizeUpstreamRequestForm(value),
+    imageUrlPath: trimToUndefined(value?.imageUrlPath),
+    imageBase64Path: trimToUndefined(value?.imageBase64Path),
+    mimeTypePath: trimToUndefined(value?.mimeTypePath),
+    tokenPath: trimToUndefined(value?.tokenPath)
+  }) as UpstreamCaptchaRequest;
 }
 
 function normalizeUpstreamOrderRequestForm(value: UpstreamRequestFormValue | undefined): UpstreamOrderRequest {
