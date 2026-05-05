@@ -112,8 +112,8 @@ export function listProductCards(id: number) {
   return request<ProductCard[]>(`/api/admin/products/${id}/cards`);
 }
 
-export function updateOrderStatus(id: string, status: OrderStatus, manualReason?: string) {
-  return request<Order>(`/api/admin/orders/${id}/status`, { method: "POST", body: JSON.stringify({ status, manualReason }) });
+export function updateOrderStatus(id: string, status: OrderStatus, manualReason?: string, deliveryPayload?: string) {
+  return request<Order>(`/api/admin/orders/${id}/status`, { method: "POST", body: JSON.stringify({ status, manualReason, deliveryPayload }) });
 }
 
 export function loadPublicStore() {

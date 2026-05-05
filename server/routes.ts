@@ -118,8 +118,8 @@ export function createApiRoutes(ctx: AppContext) {
     },
     "/api/admin/orders/:id/status": {
       POST: (req: RouteRequest<{ id: string }>) => withErrors(async () => admin(ctx, req, async () => {
-        const body = await readJson<{ status: OrderStatus; manualReason?: string }>(req);
-        return json(updateOrderStatus(ctx, req.params.id, body.status, body.manualReason));
+        const body = await readJson<{ status: OrderStatus; manualReason?: string; deliveryPayload?: string }>(req);
+        return json(updateOrderStatus(ctx, req.params.id, body.status, body.manualReason, body.deliveryPayload));
       }))
     },
     "/api/admin/logs": {

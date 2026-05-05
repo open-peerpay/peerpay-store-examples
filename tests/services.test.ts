@@ -7,6 +7,7 @@ import {
   findOrdersByContact,
   getStoreSettings,
   handlePeerPayCallback,
+  updateOrderStatus,
   updateStoreSettings,
   type AppContext
 } from "../server/services";
@@ -101,6 +102,37 @@ describe("store services", () => {
       slug: "payment-required",
       contactValue: "buyer"
     } as Parameters<typeof createOrder>[1])).rejects.toThrow("请选择支付方式");
+  });
+
+  test("requires and stores delivery payload when admin fulfills manual orders", async () => {
+    const ctx = createTestContext();
+    const restorePeerPay = mockPeerPayFetch();
+    createProduct(ctx, {
+      title: "人工卡密",
+      slug: "manual-card",
+      price: "12.00",
+      status: "active",
+      deliveryMode: "manual"
+    });
+
+    try {
+      ctx.db.query("INSERT INTO app_settings(key, value, updated_at) VALUES ('peerpay_base_url', ?, ?)").run("http://peerpay.test", new Date().toISOString());
+      const result = await createOrder(ctx, {
+        slug: "manual-card",
+        contactValue: "buyer",
+        paymentChannel: "alipay"
+      }, "http://store.test/api/public/orders");
+
+      expect(() => updateOrderStatus(ctx, result.order.id, "delivered", "后台标记已处理")).toThrow("请填写卡密或发货内容");
+
+      const delivered = updateOrderStatus(ctx, result.order.id, "delivered", "后台填写发货内容", "MANUAL-CARD-001");
+      expect(delivered?.status).toBe("delivered");
+      expect(delivered?.deliveryPayload).toBe("MANUAL-CARD-001");
+      expect(delivered?.manualReason).toBeNull();
+      expect(delivered?.deliveredAt).toBeTruthy();
+    } finally {
+      restorePeerPay();
+    }
   });
 
   test("reads PeerPay integration settings from SQLite instead of environment variables", () => {

@@ -469,6 +469,21 @@ function ProductsView({
 
 function OrdersView({ orders, loading, onChange }: { orders: Order[]; loading: boolean; onChange: () => Promise<void> }) {
   const { message } = AntApp.useApp();
+  const [deliveryOrder, setDeliveryOrder] = useState<Order | null>(null);
+
+  const handleDeliver = async (item: Order) => {
+    if (shouldFillDeliveryPayload(item)) {
+      setDeliveryOrder(item);
+      return;
+    }
+    try {
+      await updateOrderStatus(item.id, "delivered", "后台标记已处理");
+      await onChange();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "更新失败");
+    }
+  };
+
   const columns: Columns<Order> = [
     { title: "订单号", dataIndex: "id", width: 190, render: (value) => <Text copyable>{value}</Text> },
     { title: "商品", dataIndex: "productTitle", render: (value, item) => <div><strong>{value}</strong><br /><Text type="secondary">¥{item.amount}</Text></div> },
@@ -482,14 +497,9 @@ function OrdersView({ orders, loading, onChange }: { orders: Order[]; loading: b
       width: 210,
       render: (_, item) => (
         <Space wrap>
-          <Button size="small" disabled={item.status === "delivered"} onClick={async () => {
-            try {
-              await updateOrderStatus(item.id, "delivered", "后台标记已处理");
-              await onChange();
-            } catch (error) {
-              message.error(error instanceof Error ? error.message : "更新失败");
-            }
-          }}>标记已处理</Button>
+          <Button size="small" disabled={item.status === "delivered"} onClick={() => handleDeliver(item)}>
+            {shouldFillDeliveryPayload(item) ? "填写发货" : "标记已处理"}
+          </Button>
           <Button size="small" danger disabled={item.status === "cancelled"} onClick={async () => {
             try {
               await updateOrderStatus(item.id, "cancelled", "后台取消");
@@ -503,17 +513,98 @@ function OrdersView({ orders, loading, onChange }: { orders: Order[]; loading: b
     }
   ];
   return (
-    <section className="panel">
-      <Table
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={orders}
-        pagination={false}
-        scroll={{ x: 1360 }}
-        expandable={{ expandedRowRender: (order) => <OrderDetails order={order} /> }}
+    <>
+      <section className="panel">
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={orders}
+          pagination={false}
+          scroll={{ x: 1360 }}
+          expandable={{ expandedRowRender: (order) => <OrderDetails order={order} /> }}
+        />
+      </section>
+      <ManualDeliveryDrawer
+        order={deliveryOrder}
+        open={Boolean(deliveryOrder)}
+        onClose={() => setDeliveryOrder(null)}
+        onDelivered={async () => {
+          setDeliveryOrder(null);
+          await onChange();
+        }}
       />
-    </section>
+    </>
+  );
+}
+
+function shouldFillDeliveryPayload(order: Order) {
+  return order.deliveryMode === "manual" || order.status === "needs_manual";
+}
+
+function ManualDeliveryDrawer({ order, open, onClose, onDelivered }: {
+  order: Order | null;
+  open: boolean;
+  onClose: () => void;
+  onDelivered: () => Promise<void>;
+}) {
+  const { message } = AntApp.useApp();
+  const [form] = Form.useForm<{ deliveryPayload: string }>();
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (order) {
+      form.setFieldsValue({ deliveryPayload: order.deliveryPayload ?? "" });
+      return;
+    }
+    form.resetFields();
+  }, [form, order]);
+
+  return (
+    <Drawer
+      title="填写发货内容"
+      open={open}
+      onClose={onClose}
+      size={520}
+      destroyOnHidden
+      footer={(
+        <Space>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" loading={submitting} onClick={() => form.submit()}>确认发货</Button>
+        </Space>
+      )}
+    >
+      {order && (
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={async (values) => {
+            setSubmitting(true);
+            try {
+              await updateOrderStatus(order.id, "delivered", "后台填写发货内容", values.deliveryPayload);
+              message.success("发货内容已保存");
+              await onDelivered();
+            } catch (error) {
+              message.error(error instanceof Error ? error.message : "发货失败");
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        >
+          <div className="settings-grid drawer-action">
+            <InfoCell label="订单号" value={order.id} />
+            <InfoCell label="商品" value={order.productTitle} />
+          </div>
+          <Form.Item
+            name="deliveryPayload"
+            label="卡密或发货内容"
+            rules={[{ required: true, whitespace: true, message: "请填写卡密或发货内容" }]}
+          >
+            <TextArea rows={8} placeholder="例如：卡号、卡密、兑换码或取货说明" />
+          </Form.Item>
+        </Form>
+      )}
+    </Drawer>
   );
 }
 

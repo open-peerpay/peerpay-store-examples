@@ -503,7 +503,7 @@ export function findOrdersByContact(ctx: AppContext, contactValue: string): Orde
   return rows.map(orderFromRow);
 }
 
-export function updateOrderStatus(ctx: AppContext, id: string, status: OrderStatus, manualReason?: string) {
+export function updateOrderStatus(ctx: AppContext, id: string, status: OrderStatus, manualReason?: string, deliveryPayload?: string) {
   if (!["pending_payment", "paid", "delivered", "needs_manual", "failed", "cancelled"].includes(status)) {
     throw apiError(400, "订单状态不合法");
   }
@@ -512,6 +512,15 @@ export function updateOrderStatus(ctx: AppContext, id: string, status: OrderStat
     throw apiError(404, "订单不存在");
   }
   const at = nowIso();
+  const normalizedDeliveryPayload = normalizeDeliveryPayload(deliveryPayload);
+  if (status === "delivered" && normalizedDeliveryPayload) {
+    const delivered = updateOrderDelivered(ctx, id, normalizedDeliveryPayload, order.upstreamResponse, order.upstreamOrderId, at);
+    writeLog(ctx, "info", "order.status", `订单 ${id} 状态变更为 ${status}`, { id, status, manualReason, hasDeliveryPayload: true });
+    return delivered;
+  }
+  if (status === "delivered" && (order.deliveryMode === "manual" || order.status === "needs_manual") && !order.deliveryPayload) {
+    throw apiError(400, "请填写卡密或发货内容");
+  }
   ctx.db.query(`
     UPDATE orders
     SET status = ?, manual_reason = COALESCE(?, manual_reason),
@@ -1111,6 +1120,14 @@ function normalizeOrderRemark(value: unknown) {
   const text = typeof value === "string" ? value.trim() : "";
   if (text.length > 500) {
     throw apiError(400, "备注不能超过 500 字");
+  }
+  return text || null;
+}
+
+function normalizeDeliveryPayload(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (text.length > 5000) {
+    throw apiError(400, "发货内容不能超过 5000 字");
   }
   return text || null;
 }
