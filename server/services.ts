@@ -117,6 +117,8 @@ interface Availability {
   reason: string | null;
 }
 
+type UpstreamRequestKind = "precheck" | "stock" | "order";
+
 interface PeerPayCreateOrderResponse {
   id: string;
   payUrl: string;
@@ -698,7 +700,7 @@ async function fulfillUpstreamOrder(ctx: AppContext, order: Order, product: Prod
 
   const vars = orderTemplateVars(product, order);
   try {
-    const result = await runRequest(request, vars);
+    const result = await runRequest(request, vars, "order");
     if (!result.ok) {
       throw new Error(`上游 HTTP ${result.status}`);
     }
@@ -852,7 +854,7 @@ async function checkUpstreamAvailability(product: Product): Promise<Availability
       return { available: false, reason: "预检测请求未配置" };
     }
     try {
-      const result = await runRequest(precheck, vars);
+      const result = await runRequest(precheck, vars, "precheck");
       if (!result.ok || !checkExpectation(precheck.expect, result.data)) {
         return { available: false, reason: "预检测不通过" };
       }
@@ -867,7 +869,7 @@ async function checkUpstreamAvailability(product: Product): Promise<Availability
       return { available: false, reason: "库存请求未配置" };
     }
     try {
-      const result = await runRequest(stock, vars);
+      const result = await runRequest(stock, vars, "stock");
       if (!result.ok || !checkStock(stock, result.data)) {
         return { available: false, reason: "上游无库存" };
       }
@@ -878,7 +880,7 @@ async function checkUpstreamAvailability(product: Product): Promise<Availability
   return { available: true, reason: null };
 }
 
-async function runRequest(config: UpstreamHttpRequest, vars: Record<string, string>): Promise<RequestResult> {
+async function runRequest(config: UpstreamHttpRequest, vars: Record<string, string>, kind: UpstreamRequestKind): Promise<RequestResult> {
   if (!config.url) {
     throw new Error("请求 URL 未配置");
   }
@@ -888,29 +890,75 @@ async function runRequest(config: UpstreamHttpRequest, vars: Record<string, stri
   const headers = renderTemplateObject(config.headers ?? {}, vars) as Record<string, string>;
   const bodyValue = config.body === undefined ? undefined : renderTemplateObject(config.body, vars);
   const init: RequestInit = { method, headers, signal: controller.signal };
+  let requestBody: string | undefined;
+  let bodyType: HttpBodyType | undefined;
   if (bodyValue !== undefined && method !== "GET") {
-    const bodyType = config.bodyType ?? inferRequestBodyType(headers, bodyValue);
+    bodyType = config.bodyType ?? inferRequestBodyType(headers, bodyValue);
     if (bodyType === "form") {
-      init.body = encodeFormBody(bodyValue);
+      requestBody = encodeFormBody(bodyValue);
+      init.body = requestBody;
       init.headers = hasHeader(headers, "content-type")
         ? headers
         : { "content-type": "application/x-www-form-urlencoded;charset=UTF-8", ...headers };
     } else if (bodyType === "raw" || typeof bodyValue === "string") {
-      init.body = typeof bodyValue === "string" ? bodyValue : JSON.stringify(bodyValue);
+      requestBody = typeof bodyValue === "string" ? bodyValue : JSON.stringify(bodyValue);
+      init.body = requestBody;
     } else {
-      init.body = JSON.stringify(bodyValue);
+      requestBody = JSON.stringify(bodyValue);
+      init.body = requestBody;
       init.headers = { "content-type": "application/json", ...headers };
     }
   }
 
+  const url = renderTemplate(config.url, vars);
+  const startedAt = Date.now();
+  logUpstream("request", {
+    kind,
+    method,
+    url,
+    timeoutMs: Math.max(1000, config.timeoutMs ?? 5000),
+    bodyType,
+    headers: init.headers,
+    body: requestBody
+  });
+
   try {
-    const response = await fetch(renderTemplate(config.url, vars), init);
+    const response = await fetch(url, init);
     const text = await response.text();
     const data = parseMaybeJson(text);
+    logUpstream("response", {
+      kind,
+      method,
+      url,
+      ok: response.ok,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      headers: Object.fromEntries(response.headers.entries()),
+      text,
+      data
+    });
     return { ok: response.ok, status: response.status, data, text };
+  } catch (error) {
+    logUpstream("error", {
+      kind,
+      method,
+      url,
+      durationMs: Date.now() - startedAt,
+      error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error
+    });
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function logUpstream(event: "request" | "response" | "error", payload: Record<string, unknown>) {
+  const line = JSON.stringify({ at: nowIso(), event: `upstream.${event}`, ...payload });
+  if (event === "error") {
+    console.error(line);
+    return;
+  }
+  console.info(line);
 }
 
 function inferRequestBodyType(headers: Record<string, string>, bodyValue: unknown): HttpBodyType {
