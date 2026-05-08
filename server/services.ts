@@ -518,9 +518,10 @@ export async function createOrder(ctx: AppContext, input: CreateOrderInput, requ
     const paidOrder = await createPeerPayPayment(ctx, order, product, requestUrl);
     return { order: paidOrder, paymentUrl: paidOrder.peerpayPayUrl, rememberedAt: nowIso() };
   } catch (error) {
-    const failed = updateOrderManual(ctx, order.id, error instanceof Error ? error.message : "PeerPay 支付订单创建失败");
+    const reason = error instanceof Error ? error.message : "PeerPay 支付订单创建失败";
+    const failed = updateOrderFailed(ctx, order.id, reason);
     await notifyFeishu(ctx, "PeerPay Store 支付订单创建失败", formatOrderNotice(failed));
-    throw apiError(502, failed.manualReason ?? "PeerPay 支付订单创建失败");
+    throw apiError(502, "支付暂不可用，请稍后再试");
   }
 }
 
@@ -578,7 +579,7 @@ export function publicOrderFromOrder(order: Order): Order {
     upstreamResponse: null,
     upstreamCaptcha: null,
     upstreamCaptchaToken: null,
-    manualReason: order.manualReason ? "订单处理中，请联系商家处理" : null
+    manualReason: order.status === "needs_manual" && order.manualReason ? "订单处理中，请联系商家处理" : null
   };
 }
 
@@ -593,6 +594,15 @@ export function updateOrderStatus(ctx: AppContext, id: string, status: OrderStat
   const order = getOrder(ctx, id);
   if (!order) {
     throw apiError(404, "订单不存在");
+  }
+  if (order.status === "delivered" && status !== "delivered") {
+    throw apiError(400, "已发货订单不能变更状态");
+  }
+  if (order.status === "cancelled" && status !== "cancelled") {
+    throw apiError(400, "已取消订单不能变更状态");
+  }
+  if (order.status === "failed" && status !== "failed") {
+    throw apiError(400, "失败订单不能变更状态");
   }
   const at = nowIso();
   const normalizedDeliveryPayload = normalizeDeliveryPayload(deliveryPayload);
@@ -911,6 +921,21 @@ function updateOrderManual(ctx: AppContext, id: string, manualReason: string, up
     id
   );
   writeLog(ctx, "warn", "order.manual", `订单 ${id} 需要人工介入`, { orderId: id, manualReason });
+  const order = getOrder(ctx, id);
+  if (!order) {
+    throw apiError(500, "订单更新失败");
+  }
+  return order;
+}
+
+function updateOrderFailed(ctx: AppContext, id: string, manualReason: string) {
+  const at = nowIso();
+  ctx.db.query(`
+    UPDATE orders
+    SET status = 'failed', manual_reason = ?, updated_at = ?
+    WHERE id = ?
+  `).run(manualReason, at, id);
+  writeLog(ctx, "error", "order.failed", `订单 ${id} 已失败`, { orderId: id, manualReason });
   const order = getOrder(ctx, id);
   if (!order) {
     throw apiError(500, "订单更新失败");

@@ -564,10 +564,10 @@ function OrdersView({ orders, loading, onChange }: { orders: Order[]; loading: b
       width: 210,
       render: (_, item) => (
         <Space wrap>
-          <Button size="small" disabled={item.status === "delivered"} onClick={() => handleDeliver(item)}>
+          <Button size="small" disabled={isTerminalOrderStatus(item.status)} onClick={() => handleDeliver(item)}>
             {shouldFillDeliveryPayload(item) ? "填写发货" : "标记已处理"}
           </Button>
-          <Button size="small" danger disabled={item.status === "cancelled"} onClick={async () => {
+          <Button size="small" danger disabled={isTerminalOrderStatus(item.status)} onClick={async () => {
             try {
               await updateOrderStatus(item.id, "cancelled", "后台取消");
               await onChange();
@@ -607,6 +607,10 @@ function OrdersView({ orders, loading, onChange }: { orders: Order[]; loading: b
 
 function shouldFillDeliveryPayload(order: Order) {
   return order.deliveryMode === "manual" || order.status === "needs_manual";
+}
+
+function isTerminalOrderStatus(status: Order["status"]) {
+  return status === "delivered" || status === "cancelled" || status === "failed";
 }
 
 function ManualDeliveryDrawer({ order, open, onClose, onDelivered }: {
@@ -1500,6 +1504,7 @@ function ProductModal({
   const [loading, setLoading] = useState(false);
   const [captcha, setCaptcha] = useState<PublicCaptcha | null>(null);
   const [captchaLoading, setCaptchaLoading] = useState(false);
+  const productSlug = product?.slug;
 
   const refreshCaptcha = useCallback(async (slug: string) => {
     setCaptchaLoading(true);
@@ -1516,17 +1521,22 @@ function ProductModal({
 
   useEffect(() => {
     if (product) {
-      form.setFieldValue("paymentChannel", defaultPaymentChannel);
-      form.setFieldValue("captcha", "");
+      form.setFieldsValue({
+        contactValue: "",
+        paymentChannel: defaultPaymentChannel,
+        captcha: "",
+        remark: ""
+      });
       setCaptcha(null);
       if (product.available && product.captchaRequired) {
         void refreshCaptcha(product.slug);
       }
       return;
     }
+    form.resetFields();
     setCaptcha(null);
     setCaptchaLoading(false);
-  }, [defaultPaymentChannel, form, product, refreshCaptcha]);
+  }, [defaultPaymentChannel, form, productSlug, refreshCaptcha]);
 
   return (
     <StoreDialog open={Boolean(product)} onClose={onClose} labelledBy="product-dialog-title">

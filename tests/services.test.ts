@@ -4,6 +4,7 @@ import {
   addCards,
   createOrder,
   createProduct,
+  dashboardStats,
   findOrdersByContact,
   getPublicProduct,
   getPublicProductAvailability,
@@ -68,6 +69,44 @@ describe("store services", () => {
       expect(findOrdersByContact(ctx, "13800138000")).toHaveLength(1);
     } finally {
       restorePeerPay();
+    }
+  });
+
+  test("marks PeerPay creation failures as failed orders instead of manual intervention", async () => {
+    const ctx = createTestContext();
+    const restoreFetch = mockFetch(async (url, init) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST" && url.origin === "http://peerpay.test" && url.pathname === "/api/orders") {
+        return Response.json({ data: { error: "PeerPay 临时不可用" } }, { status: 502 });
+      }
+      return undefined;
+    });
+    const product = createProduct(ctx, {
+      title: "支付失败卡密",
+      slug: "payment-failed-card",
+      price: "9.90",
+      status: "active",
+      deliveryMode: "card"
+    });
+    addCards(ctx, product!.id, { cards: ["CARD-FAILED-001"] });
+
+    try {
+      ctx.db.query("INSERT INTO app_settings(key, value, updated_at) VALUES ('peerpay_base_url', ?, ?)").run("http://peerpay.test", new Date().toISOString());
+
+      await expect(createOrder(ctx, {
+        slug: "payment-failed-card",
+        contactValue: "buyer@example.com",
+        paymentChannel: "alipay"
+      }, "http://store.test/api/public/orders")).rejects.toThrow("支付暂不可用，请稍后再试");
+
+      const orders = findOrdersByContact(ctx, "buyer@example.com");
+      expect(orders).toHaveLength(1);
+      expect(orders[0]?.status).toBe("failed");
+      expect(orders[0]?.manualReason).toBe("PeerPay 临时不可用");
+      expect(getPublicOrder(ctx, orders[0]!.id)?.manualReason).toBeNull();
+      expect(dashboardStats(ctx).orders.needsManual).toBe(0);
+    } finally {
+      restoreFetch();
     }
   });
 
@@ -597,6 +636,7 @@ describe("store services", () => {
       expect(delivered?.deliveryPayload).toBe("MANUAL-CARD-001");
       expect(delivered?.manualReason).toBeNull();
       expect(delivered?.deliveredAt).toBeTruthy();
+      expect(() => updateOrderStatus(ctx, result.order.id, "cancelled", "后台取消")).toThrow("已发货订单不能变更状态");
     } finally {
       restorePeerPay();
     }
