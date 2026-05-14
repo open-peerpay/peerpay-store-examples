@@ -28,6 +28,8 @@ import type {
   StoreSettings,
   SystemLog,
   UpdateProductInput,
+  UpstreamChannel,
+  UpstreamChannelInput,
   UpstreamCaptchaRequest,
   UpstreamConfig,
   UpstreamHttpRequest,
@@ -107,6 +109,15 @@ interface SystemLogRow {
   message: string;
   context: string | null;
   created_at: string;
+}
+
+interface UpstreamChannelRow {
+  id: number;
+  name: string;
+  description: string;
+  config: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface RequestResult {
@@ -312,6 +323,47 @@ export function dashboardStats(ctx: AppContext): DashboardStats {
 export function listProducts(ctx: AppContext) {
   const rows = ctx.db.query("SELECT * FROM products ORDER BY sort_order ASC, id DESC").all() as ProductRow[];
   return rows.map((row) => productFromRow(ctx, row));
+}
+
+export function listUpstreamChannels(ctx: AppContext): UpstreamChannel[] {
+  const rows = ctx.db.query("SELECT * FROM upstream_channels ORDER BY updated_at DESC, id DESC").all() as UpstreamChannelRow[];
+  return rows.map(channelFromRow);
+}
+
+export function createUpstreamChannel(ctx: AppContext, input: UpstreamChannelInput) {
+  const normalized = normalizeUpstreamChannelInput(input);
+  const at = nowIso();
+  const result = ctx.db.query(`
+    INSERT INTO upstream_channels(name, description, config, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(normalized.name, normalized.description, JSON.stringify(normalized.config), at, at);
+  writeLog(ctx, "info", "upstream_channel.create", `上游渠道 ${normalized.name} 已创建`, { id: Number(result.lastInsertRowid) });
+  return getUpstreamChannelById(ctx, Number(result.lastInsertRowid));
+}
+
+export function updateUpstreamChannel(ctx: AppContext, id: number, input: UpstreamChannelInput) {
+  const current = getUpstreamChannelById(ctx, id);
+  if (!current) {
+    throw apiError(404, "上游渠道不存在");
+  }
+  const normalized = normalizeUpstreamChannelInput(input);
+  ctx.db.query(`
+    UPDATE upstream_channels
+    SET name = ?, description = ?, config = ?, updated_at = ?
+    WHERE id = ?
+  `).run(normalized.name, normalized.description, JSON.stringify(normalized.config), nowIso(), id);
+  writeLog(ctx, "info", "upstream_channel.update", `上游渠道 ${normalized.name} 已更新`, { id });
+  return getUpstreamChannelById(ctx, id);
+}
+
+export function deleteUpstreamChannel(ctx: AppContext, id: number) {
+  const current = getUpstreamChannelById(ctx, id);
+  if (!current) {
+    throw apiError(404, "上游渠道不存在");
+  }
+  ctx.db.query("DELETE FROM upstream_channels WHERE id = ?").run(id);
+  writeLog(ctx, "info", "upstream_channel.delete", `上游渠道 ${current.name} 已删除`, { id });
+  return { ok: true };
 }
 
 export async function listPublicProducts(ctx: AppContext) {
@@ -1361,6 +1413,22 @@ function productFromRow(ctx: AppContext, row: ProductRow): Product {
   };
 }
 
+function channelFromRow(row: UpstreamChannelRow): UpstreamChannel {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    config: parseJson<UpstreamConfig>(row.config, {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function getUpstreamChannelById(ctx: AppContext, id: number): UpstreamChannel | null {
+  const row = ctx.db.query("SELECT * FROM upstream_channels WHERE id = ?").get(id) as UpstreamChannelRow | null;
+  return row ? channelFromRow(row) : null;
+}
+
 function orderFromRow(row: OrderRow): Order {
   return {
     id: row.id,
@@ -1431,6 +1499,18 @@ function normalizeProductInput(input: CreateProductInput | (Product & UpdateProd
     pickupOpenMode,
     lookupMethods,
     upstreamConfig: input.upstreamConfig ?? null
+  };
+}
+
+function normalizeUpstreamChannelInput(input: UpstreamChannelInput) {
+  const name = input.name?.trim();
+  if (!name) {
+    throw apiError(400, "渠道名称不能为空");
+  }
+  return {
+    name,
+    description: input.description?.trim() ?? "",
+    config: input.config ?? {}
   };
 }
 

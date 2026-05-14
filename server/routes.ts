@@ -23,11 +23,15 @@ import {
   listProducts,
   listPublicProducts,
   listSystemLogs,
+  listUpstreamChannels,
   publicOrderFromOrder,
   setProductStatus,
   saveUploadedImage,
+  createUpstreamChannel,
+  deleteUpstreamChannel,
   updateOrderStatus,
   updateProduct,
+  updateUpstreamChannel,
   updateStoreSettings,
   uploadedImageResponse,
   type AppContext
@@ -38,6 +42,7 @@ import type {
   CreateProductInput,
   OrderStatus,
   ProductStatus,
+  UpstreamChannelInput,
   UpdateProductInput
 } from "../src/shared/types";
 
@@ -87,6 +92,18 @@ export function createApiRoutes(ctx: AppContext) {
         const form = await req.formData();
         return json(await saveUploadedImage(form.get("file")), { status: 201 });
       }))
+    },
+    "/api/admin/upstream-channels": {
+      GET: (req: Request) => withErrors(() => admin(ctx, req, () => json(listUpstreamChannels(ctx)))),
+      POST: (req: Request) => withErrors(async () => admin(ctx, req, async () => {
+        return json(createUpstreamChannel(ctx, await readJson<UpstreamChannelInput>(req)), { status: 201 });
+      }))
+    },
+    "/api/admin/upstream-channels/:id": {
+      POST: (req: RouteRequest<{ id: string }>) => withErrors(async () => admin(ctx, req, async () => {
+        return json(updateUpstreamChannel(ctx, Number(req.params.id), await readJson<UpstreamChannelInput>(req)));
+      })),
+      DELETE: (req: RouteRequest<{ id: string }>) => withErrors(() => admin(ctx, req, () => json(deleteUpstreamChannel(ctx, Number(req.params.id)))))
     },
     "/api/admin/products": {
       GET: (req: Request) => withErrors(() => admin(ctx, req, () => json(listProducts(ctx)))),

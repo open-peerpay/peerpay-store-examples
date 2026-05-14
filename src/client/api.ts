@@ -15,7 +15,9 @@ import type {
   PublicProduct,
   StoreSettings,
   SystemLog,
-  UpdateProductInput
+  UpdateProductInput,
+  UpstreamChannel,
+  UpstreamChannelInput
 } from "../shared/types";
 
 interface ApiEnvelope<T> {
@@ -64,12 +66,14 @@ export function loadAdminSnapshot() {
   return Promise.all([
     request<DashboardStats>("/api/admin/dashboard"),
     request<StoreSettings>("/api/admin/settings"),
+    request<UpstreamChannel[]>("/api/admin/upstream-channels"),
     request<Product[]>("/api/admin/products"),
     request<Page<Order>>("/api/admin/orders?limit=100"),
     request<Page<SystemLog>>("/api/admin/logs?limit=80")
-  ]).then(([dashboard, settings, products, orders, logs]) => ({
+  ]).then(([dashboard, settings, upstreamChannels, products, orders, logs]) => ({
     dashboard,
     settings,
+    upstreamChannels,
     products,
     orders,
     logs
@@ -99,6 +103,18 @@ export function createProduct(input: CreateProductInput) {
 
 export function updateProduct(id: number, input: UpdateProductInput) {
   return request<Product>(`/api/admin/products/${id}`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function createUpstreamChannel(input: UpstreamChannelInput) {
+  return request<UpstreamChannel>("/api/admin/upstream-channels", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateUpstreamChannel(id: number, input: UpstreamChannelInput) {
+  return request<UpstreamChannel>(`/api/admin/upstream-channels/${id}`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deleteUpstreamChannel(id: number) {
+  return request<{ ok: boolean }>(`/api/admin/upstream-channels/${id}`, { method: "DELETE" });
 }
 
 export function setProductStatus(id: number, status: ProductStatus) {

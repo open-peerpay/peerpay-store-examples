@@ -68,6 +68,8 @@ import type {
   StoreAd,
   StoreSettings,
   SystemLog,
+  UpstreamChannel,
+  UpstreamChannelInput,
   UpstreamCaptchaRequest,
   UpstreamConfig,
   UpstreamHttpRequest,
@@ -76,8 +78,10 @@ import type {
 } from "../shared/types";
 import {
   addProductCards,
+  createUpstreamChannel,
   createProduct,
   createPublicOrder,
+  deleteUpstreamChannel,
   getAdminSession,
   listProductCards,
   loadAdminSnapshot,
@@ -94,11 +98,12 @@ import {
   setupAdmin,
   updateOrderStatus,
   updateProduct,
+  updateUpstreamChannel,
   uploadImage,
   type AdminSnapshot
 } from "./api";
 
-type ViewKey = "dashboard" | "products" | "orders" | "store-settings" | "ad-settings" | "notification-settings" | "logs";
+type ViewKey = "dashboard" | "products" | "upstream-channels" | "orders" | "store-settings" | "ad-settings" | "notification-settings" | "logs";
 type Columns<T> = NonNullable<TableProps<T>["columns"]>;
 
 const { Header, Sider, Content } = Layout;
@@ -121,6 +126,7 @@ const emptySnapshot: AdminSnapshot = {
     peerpayTtlMinutes: 15
   },
   products: [],
+  upstreamChannels: [],
   orders: { items: [], total: 0, limit: 100, offset: 0 },
   logs: { items: [], total: 0, limit: 80, offset: 0 }
 };
@@ -128,6 +134,7 @@ const emptySnapshot: AdminSnapshot = {
 const menuItems: MenuProps["items"] = [
   { key: "dashboard", icon: <AppstoreOutlined />, label: "仪表盘" },
   { key: "products", icon: <ShopOutlined />, label: "商品上架" },
+  { key: "upstream-channels", icon: <GlobalOutlined />, label: "渠道管理" },
   { key: "orders", icon: <ShoppingCartOutlined />, label: "订单管理" },
   { key: "store-settings", icon: <SettingOutlined />, label: "商店配置" },
   { key: "ad-settings", icon: <PictureOutlined />, label: "广告配置" },
@@ -138,6 +145,7 @@ const menuItems: MenuProps["items"] = [
 const viewTitles: Record<ViewKey, string> = {
   dashboard: "仪表盘",
   products: "商品上架",
+  "upstream-channels": "渠道管理",
   orders: "订单管理",
   "store-settings": "商店配置",
   "ad-settings": "广告配置",
@@ -340,6 +348,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
   const [snapshot, setSnapshot] = useState(emptySnapshot);
   const [loading, setLoading] = useState(false);
   const [productDrawer, setProductDrawer] = useState<Product | "new" | null>(null);
+  const [channelDrawer, setChannelDrawer] = useState<UpstreamChannel | "new" | null>(null);
   const [cardsProduct, setCardsProduct] = useState<Product | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -415,6 +424,18 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
               }}
             />
           )}
+          {view === "upstream-channels" && (
+            <UpstreamChannelsView
+              channels={snapshot.upstreamChannels}
+              loading={loading}
+              onCreate={() => setChannelDrawer("new")}
+              onEdit={setChannelDrawer}
+              onDelete={async (channel) => {
+                await deleteUpstreamChannel(channel.id);
+                await refresh();
+              }}
+            />
+          )}
           {view === "orders" && <OrdersView orders={snapshot.orders.items} loading={loading} onChange={refresh} />}
           {view === "store-settings" && <StoreSettingsView settings={snapshot.settings} onSaved={refresh} />}
           {view === "ad-settings" && <AdSettingsView settings={snapshot.settings} onSaved={refresh} />}
@@ -424,10 +445,20 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
       </Layout>
       <ProductDrawer
         product={productDrawer}
+        channels={snapshot.upstreamChannels}
         open={Boolean(productDrawer)}
         onClose={() => setProductDrawer(null)}
         onSaved={async () => {
           setProductDrawer(null);
+          await refresh();
+        }}
+      />
+      <UpstreamChannelDrawer
+        channel={channelDrawer}
+        open={Boolean(channelDrawer)}
+        onClose={() => setChannelDrawer(null)}
+        onSaved={async () => {
+          setChannelDrawer(null);
           await refresh();
         }}
       />
@@ -529,6 +560,62 @@ function ProductsView({
       </div>
       <section className="panel">
         <Table rowKey="id" loading={loading} columns={columns} dataSource={products} pagination={false} scroll={{ x: 980 }} />
+      </section>
+    </div>
+  );
+}
+
+function UpstreamChannelsView({
+  channels,
+  loading,
+  onCreate,
+  onEdit,
+  onDelete
+}: {
+  channels: UpstreamChannel[];
+  loading: boolean;
+  onCreate: () => void;
+  onEdit: (channel: UpstreamChannel) => void;
+  onDelete: (channel: UpstreamChannel) => Promise<void>;
+}) {
+  const { message } = AntApp.useApp();
+  const columns: Columns<UpstreamChannel> = [
+    { title: "渠道", dataIndex: "name", render: (_, item) => <ChannelTitle channel={item} /> },
+    { title: "启用段", dataIndex: "config", width: 280, render: (config: UpstreamConfig) => <UpstreamChannelTags config={config} /> },
+    { title: "更新时间", dataIndex: "updatedAt", width: 180, render: formatDate },
+    {
+      title: "操作",
+      width: 180,
+      render: (_, item) => (
+        <Space wrap>
+          <Button size="small" onClick={() => onEdit(item)}>编辑</Button>
+          <Button size="small" danger onClick={async () => {
+            if (!window.confirm(`删除渠道「${item.name}」？`)) {
+              return;
+            }
+            try {
+              await onDelete(item);
+              message.success("渠道已删除");
+            } catch (error) {
+              message.error(error instanceof Error ? error.message : "删除失败");
+            }
+          }}>删除</Button>
+        </Space>
+      )
+    }
+  ];
+
+  return (
+    <div className="view-stack">
+      <div className="page-heading">
+        <div>
+          <Title level={4}>上游渠道</Title>
+          <Text type="secondary">把验证码、预检测、库存查询和下单请求封装为渠道模板，商品只需要选择渠道并填写 SKU/Token。</Text>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={onCreate}>新增渠道</Button>
+      </div>
+      <section className="panel">
+        <Table rowKey="id" loading={loading} columns={columns} dataSource={channels} pagination={false} scroll={{ x: 820 }} />
       </section>
     </div>
   );
@@ -935,10 +1022,88 @@ function LogsView({ logs, loading }: { logs: SystemLog[]; loading: boolean }) {
   );
 }
 
-function ProductDrawer({ product, open, onClose, onSaved }: { product: Product | "new" | null; open: boolean; onClose: () => void; onSaved: () => Promise<void> }) {
+function UpstreamChannelDrawer({ channel, open, onClose, onSaved }: { channel: UpstreamChannel | "new" | null; open: boolean; onClose: () => void; onSaved: () => Promise<void> }) {
+  const { message } = AntApp.useApp();
+  const [form] = Form.useForm();
+  const isNew = channel === "new";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (!channel || channel === "new") {
+      form.setFieldsValue({
+        name: "",
+        description: "",
+        upstreamConfig: upstreamConfigToForm(DEFAULT_UPSTREAM_CONFIG_EXAMPLE)
+      });
+      return;
+    }
+    form.setFieldsValue({
+      name: channel.name,
+      description: channel.description,
+      upstreamConfig: upstreamConfigToForm(channel.config)
+    });
+  }, [channel, form, open]);
+
+  return (
+    <Drawer
+      title={isNew ? "新增上游渠道" : "编辑上游渠道"}
+      open={open}
+      onClose={onClose}
+      size={760}
+      destroyOnHidden
+      footer={<Button type="primary" onClick={() => form.submit()}>保存渠道</Button>}
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={async (values) => {
+          try {
+            const payload = normalizeUpstreamChannelForm(values);
+            if (channel && channel !== "new") {
+              await updateUpstreamChannel(channel.id, payload);
+            } else {
+              await createUpstreamChannel(payload);
+            }
+            message.success("渠道已保存");
+            await onSaved();
+          } catch (error) {
+            message.error(error instanceof Error ? error.message : "保存失败");
+          }
+        }}
+      >
+        <div className="form-grid">
+          <Form.Item name="name" label="渠道名称" rules={[{ required: true, whitespace: true, message: "请填写渠道名称" }]}>
+            <Input placeholder="例如：爱搜发卡" />
+          </Form.Item>
+          <Form.Item name="description" label="备注">
+            <Input placeholder="用于区分不同上游站点或账号" />
+          </Form.Item>
+        </div>
+        <UpstreamConfigEditor showIdentity={false} />
+      </Form>
+    </Drawer>
+  );
+}
+
+function ProductDrawer({ product, channels, open, onClose, onSaved }: { product: Product | "new" | null; channels: UpstreamChannel[]; open: boolean; onClose: () => void; onSaved: () => Promise<void> }) {
   const { message } = AntApp.useApp();
   const [form] = Form.useForm();
   const isNew = product === "new";
+  const channelOptions = channels.map((channel) => ({ value: channel.id, label: channel.name }));
+
+  const applyChannelConfig = (channelId: number | undefined) => {
+    const channel = channels.find((item) => item.id === channelId);
+    if (!channel) {
+      return;
+    }
+    const current = (form.getFieldValue("upstreamConfig") ?? {}) as UpstreamConfigFormValue;
+    const next = upstreamConfigToForm(channel.config);
+    next.sku = current.sku ?? "";
+    next.token = current.token ?? "";
+    form.setFieldValue("upstreamConfig", next);
+  };
 
   useEffect(() => {
     if (!open) {
@@ -950,6 +1115,7 @@ function ProductDrawer({ product, open, onClose, onSaved }: { product: Product |
         deliveryMode: "card",
         pickupOpenMode: "none",
         sortOrder: 100,
+        upstreamChannelId: undefined,
         upstreamConfig: upstreamConfigToForm(DEFAULT_UPSTREAM_CONFIG_EXAMPLE)
       });
       return;
@@ -957,6 +1123,7 @@ function ProductDrawer({ product, open, onClose, onSaved }: { product: Product |
     form.setFieldsValue({
       ...product,
       price: Number(product.price),
+      upstreamChannelId: undefined,
       upstreamConfig: upstreamConfigToForm(product.upstreamConfig ?? DEFAULT_UPSTREAM_CONFIG_EXAMPLE)
     });
   }, [form, open, product]);
@@ -1024,7 +1191,43 @@ function ProductDrawer({ product, open, onClose, onSaved }: { product: Product |
         </div>
         <Form.Item noStyle shouldUpdate={(prev, current) => prev.deliveryMode !== current.deliveryMode}>
           {({ getFieldValue }) => getFieldValue("deliveryMode") === "upstream" ? (
-            <UpstreamConfigEditor />
+            <>
+              <Form.Item name="upstreamChannelId" label="上游渠道">
+                <Select
+                  allowClear
+                  placeholder="选择已封装的上游渠道"
+                  options={channelOptions}
+                  onChange={(value) => applyChannelConfig(value)}
+                />
+              </Form.Item>
+              <div className="form-grid">
+                <Form.Item name={["upstreamConfig", "sku"]} label="SKU">
+                  <Input placeholder="demo-sku" />
+                </Form.Item>
+                <Form.Item name={["upstreamConfig", "token"]} label="Token">
+                  <Input.Password placeholder="secret-token" />
+                </Form.Item>
+              </div>
+              <Form.Item noStyle shouldUpdate={(prev, current) => prev.upstreamChannelId !== current.upstreamChannelId}>
+                {({ getFieldValue: getNestedFieldValue }) => {
+                  const channelId = getNestedFieldValue("upstreamChannelId");
+                  const channel = channels.find((item) => item.id === channelId);
+                  return channelId ? (
+                    <section className="upstream-editor upstream-editor-compact">
+                      <div className="upstream-editor-heading">
+                        <div>
+                          <Text strong>已套用渠道模板</Text>
+                          <Text type="secondary">{channel?.name ?? "已选择渠道"} 的请求配置会随商品一起保存。</Text>
+                        </div>
+                      </div>
+                      <UpstreamChannelTags config={channel?.config ?? {}} />
+                    </section>
+                  ) : (
+                    <UpstreamConfigEditor showIdentity={false} />
+                  );
+                }}
+              </Form.Item>
+            </>
           ) : null}
         </Form.Item>
       </Form>
@@ -1032,7 +1235,7 @@ function ProductDrawer({ product, open, onClose, onSaved }: { product: Product |
   );
 }
 
-function UpstreamConfigEditor() {
+function UpstreamConfigEditor({ showIdentity = true }: { showIdentity?: boolean }) {
   return (
     <section className="upstream-editor">
       <div className="upstream-editor-heading">
@@ -1041,14 +1244,16 @@ function UpstreamConfigEditor() {
           <Text type="secondary">按预检测、库存查询和支付后下单三段维护。</Text>
         </div>
       </div>
-      <div className="form-grid">
-        <Form.Item name={["upstreamConfig", "sku"]} label="SKU">
-          <Input placeholder="demo-sku" />
-        </Form.Item>
-        <Form.Item name={["upstreamConfig", "token"]} label="Token">
-          <Input.Password placeholder="secret-token" />
-        </Form.Item>
-      </div>
+      {showIdentity && (
+        <div className="form-grid">
+          <Form.Item name={["upstreamConfig", "sku"]} label="SKU">
+            <Input placeholder="demo-sku" />
+          </Form.Item>
+          <Form.Item name={["upstreamConfig", "token"]} label="Token">
+            <Input.Password placeholder="secret-token" />
+          </Form.Item>
+        </div>
+      )}
 
       <UpstreamRequestSection name="captcha" title="验证码" tone="green">
         <div className="upstream-fields-title">图片提取</div>
@@ -1395,7 +1600,7 @@ function Storefront() {
                   </span>
                   <span className="product-card-body">
                     <span className="product-card-title">{product.title}</span>
-                    {product.description && <span className="product-card-desc">{product.description}</span>}
+                    {product.description && <span className="product-card-desc multiline-text">{product.description}</span>}
                     <span className="product-card-footer">
                       <span className="product-card-meta">¥{product.price}</span>
                       <span className="product-card-tags">
@@ -1548,7 +1753,7 @@ function ProductModal({
           <section className="store-dialog-copy">
             <Text className="store-eyebrow">商品详情</Text>
             <Title id="product-dialog-title" level={2}>{product.title}</Title>
-            <Paragraph>{product.description || "该商品支持自助下单、付款后自动发货和历史订单查询。"}</Paragraph>
+            <Paragraph className="product-description-text">{product.description || "该商品支持自助下单、付款后自动发货和历史订单查询。"}</Paragraph>
             <div className="price-line">¥{product.price}</div>
             <div className="tag-row">
               <StatusTag value={product.available ? "active" : "archived"} text={product.available ? "有货" : "无库存"} />
@@ -1777,6 +1982,31 @@ function ProductTitle({ product }: { product: Product }) {
         <Text type="secondary">/{product.slug}</Text>
       </div>
     </div>
+  );
+}
+
+function ChannelTitle({ channel }: { channel: UpstreamChannel }) {
+  return (
+    <div className="channel-title-cell">
+      <strong>{channel.name}</strong>
+      {channel.description && <Text type="secondary">{channel.description}</Text>}
+    </div>
+  );
+}
+
+function UpstreamChannelTags({ config }: { config: UpstreamConfig }) {
+  const items = [
+    ["captcha", "验证码", config.captcha?.enabled],
+    ["precheck", "预检测", config.precheck?.enabled],
+    ["stock", "库存", config.stock?.enabled],
+    ["order", "下单", config.order?.enabled]
+  ] as const;
+  return (
+    <Space wrap>
+      {items.map(([key, label, enabled]) => (
+        <Tag key={key} color={enabled ? "blue" : "default"}>{label}</Tag>
+      ))}
+    </Space>
   );
 }
 
@@ -2203,6 +2433,17 @@ function normalizeProductForm(values: Record<string, unknown>) {
     pickupUrl: values.pickupUrl ? String(values.pickupUrl) : null,
     pickupOpenMode: values.pickupOpenMode as PickupOpenMode,
     upstreamConfig
+  };
+}
+
+function normalizeUpstreamChannelForm(values: Record<string, unknown>): UpstreamChannelInput {
+  const config = normalizeUpstreamConfigForm(values.upstreamConfig);
+  delete config.sku;
+  delete config.token;
+  return {
+    name: String(values.name ?? ""),
+    description: String(values.description ?? ""),
+    config
   };
 }
 

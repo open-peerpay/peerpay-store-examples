@@ -54,6 +54,15 @@ export interface UpstreamConfig {
   order?: UpstreamOrderRequest;
 }
 
+export interface UpstreamChannel {
+  id: number;
+  name: string;
+  description: string;
+  config: UpstreamConfig;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Product {
   id: number;
   slug: string;
@@ -199,6 +208,12 @@ export interface CreateProductInput {
 }
 
 export type UpdateProductInput = Partial<CreateProductInput>;
+
+export interface UpstreamChannelInput {
+  name: string;
+  description?: string;
+  config: UpstreamConfig;
+}
 
 export interface CreateOrderInput {
   productId?: number;

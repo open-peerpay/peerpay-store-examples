@@ -53,6 +53,18 @@ function migrate(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_product_cards_stock
       ON product_cards(product_id, status, id);
 
+    CREATE TABLE IF NOT EXISTS upstream_channels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      config TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_upstream_channels_updated
+      ON upstream_channels(updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
       product_id INTEGER NOT NULL REFERENCES products(id),

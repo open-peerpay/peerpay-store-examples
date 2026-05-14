@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createDatabase } from "../server/db";
 import {
   addCards,
+  createUpstreamChannel,
   createOrder,
   createProduct,
+  deleteUpstreamChannel,
   dashboardStats,
   findOrdersByContact,
   getPublicProduct,
@@ -12,7 +14,9 @@ import {
   getPublicOrder,
   getStoreSettings,
   handlePeerPayCallback,
+  listUpstreamChannels,
   listPublicProducts,
+  updateUpstreamChannel,
   updateOrderStatus,
   updateStoreSettings,
   type AppContext
@@ -108,6 +112,36 @@ describe("store services", () => {
     } finally {
       restoreFetch();
     }
+  });
+
+  test("manages reusable upstream channels", () => {
+    const ctx = createTestContext();
+    const created = createUpstreamChannel(ctx, {
+      name: "爱搜渠道",
+      description: "验证码和估价接口",
+      config: {
+        captcha: { enabled: true, method: "GET", url: "https://upstream.test/captcha" },
+        precheck: { enabled: true, method: "POST", url: "https://upstream.test/precheck" },
+        stock: { enabled: true, method: "POST", url: "https://upstream.test/stock", stockPath: "data.stock" },
+        order: { enabled: true, method: "POST", url: "https://upstream.test/order", deliveryPath: "data.secret" }
+      }
+    });
+
+    expect(created?.name).toBe("爱搜渠道");
+    expect(listUpstreamChannels(ctx)).toHaveLength(1);
+
+    const updated = updateUpstreamChannel(ctx, created!.id, {
+      name: "爱搜渠道 2",
+      config: {
+        precheck: { enabled: true, method: "POST", url: "https://upstream.test/precheck" },
+        order: { enabled: true, method: "POST", url: "https://upstream.test/order", deliveryPath: "data.secret" }
+      }
+    });
+
+    expect(updated?.name).toBe("爱搜渠道 2");
+    expect(updated?.config.stock).toBeUndefined();
+    expect(deleteUpstreamChannel(ctx, created!.id).ok).toBe(true);
+    expect(listUpstreamChannels(ctx)).toHaveLength(0);
   });
 
   test("hides embedded pickup until the order is paid", async () => {
