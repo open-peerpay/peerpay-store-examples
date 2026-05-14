@@ -54,6 +54,7 @@ interface ProductRow {
   cover_url: string | null;
   sort_order: number;
   delivery_mode: DeliveryMode;
+  upstream_channel_id: number | null;
   pickup_url: string | null;
   pickup_open_mode: PickupOpenMode;
   lookup_methods: string;
@@ -406,6 +407,7 @@ function publicProductFromAvailability(product: Product, availability: Availabil
   return {
     ...product,
     deliveryMode: product.deliveryMode === "upstream" ? "manual" : product.deliveryMode,
+    upstreamChannelId: null,
     upstreamConfig: null,
     available: availability.available,
     availabilityReason: availability.available ? null : "无库存",
@@ -434,10 +436,10 @@ export function createProduct(ctx: AppContext, input: CreateProductInput) {
   const result = ctx.db.query(`
     INSERT INTO products (
       slug, title, description, price_cents, status, cover_url, sort_order,
-      delivery_mode, pickup_url, pickup_open_mode, lookup_methods, upstream_config,
+      delivery_mode, upstream_channel_id, pickup_url, pickup_open_mode, lookup_methods, upstream_config,
       created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     normalized.slug,
     normalized.title,
@@ -447,6 +449,7 @@ export function createProduct(ctx: AppContext, input: CreateProductInput) {
     normalized.coverUrl,
     normalized.sortOrder,
     normalized.deliveryMode,
+    normalized.upstreamChannelId,
     normalized.pickupUrl,
     normalized.pickupOpenMode,
     JSON.stringify(normalized.lookupMethods),
@@ -468,13 +471,14 @@ export function updateProduct(ctx: AppContext, id: number, input: UpdateProductI
     ...input,
     price: input.price ?? current.price,
     lookupMethods: input.lookupMethods ?? current.lookupMethods,
+    upstreamChannelId: input.upstreamChannelId === undefined ? current.upstreamChannelId : input.upstreamChannelId,
     upstreamConfig: input.upstreamConfig === undefined ? current.upstreamConfig : input.upstreamConfig
   });
   const at = nowIso();
   ctx.db.query(`
     UPDATE products
     SET slug = ?, title = ?, description = ?, price_cents = ?, status = ?, cover_url = ?,
-        sort_order = ?, delivery_mode = ?, pickup_url = ?, pickup_open_mode = ?,
+        sort_order = ?, delivery_mode = ?, upstream_channel_id = ?, pickup_url = ?, pickup_open_mode = ?,
         lookup_methods = ?, upstream_config = ?, updated_at = ?
     WHERE id = ?
   `).run(
@@ -486,6 +490,7 @@ export function updateProduct(ctx: AppContext, id: number, input: UpdateProductI
     merged.coverUrl,
     merged.sortOrder,
     merged.deliveryMode,
+    merged.upstreamChannelId,
     merged.pickupUrl,
     merged.pickupOpenMode,
     JSON.stringify(merged.lookupMethods),
@@ -1403,6 +1408,7 @@ function productFromRow(ctx: AppContext, row: ProductRow): Product {
     coverUrl: row.cover_url,
     sortOrder: row.sort_order,
     deliveryMode,
+    upstreamChannelId: row.upstream_channel_id,
     pickupUrl: row.pickup_url,
     pickupOpenMode: row.pickup_open_mode,
     lookupMethods: parseJson<ContactType[]>(row.lookup_methods, DEFAULT_LOOKUP_METHODS),
@@ -1495,6 +1501,7 @@ function normalizeProductInput(input: CreateProductInput | (Product & UpdateProd
     coverUrl: blankToNull(input.coverUrl),
     sortOrder: Number(input.sortOrder ?? 100),
     deliveryMode,
+    upstreamChannelId: deliveryMode === "upstream" ? normalizeOptionalInteger(input.upstreamChannelId) : null,
     pickupUrl: blankToNull(input.pickupUrl),
     pickupOpenMode,
     lookupMethods,
@@ -1608,6 +1615,14 @@ function normalizeLookupMethods(value: ContactType[]) {
   const allowed = new Set<ContactType>(["contact", "phone", "qq", "email"]);
   const result = value.filter((item): item is ContactType => allowed.has(item));
   return result.length ? Array.from(new Set(result)) : DEFAULT_LOOKUP_METHODS;
+}
+
+function normalizeOptionalInteger(value: unknown) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
 }
 
 function normalizeStoreAds(value: StoreAd[]) {

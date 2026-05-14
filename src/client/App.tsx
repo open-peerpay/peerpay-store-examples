@@ -1123,7 +1123,7 @@ function ProductDrawer({ product, channels, open, onClose, onSaved }: { product:
     form.setFieldsValue({
       ...product,
       price: Number(product.price),
-      upstreamChannelId: undefined,
+      upstreamChannelId: product.upstreamChannelId ?? undefined,
       upstreamConfig: upstreamConfigToForm(product.upstreamConfig ?? DEFAULT_UPSTREAM_CONFIG_EXAMPLE)
     });
   }, [form, open, product]);
@@ -2430,6 +2430,7 @@ function normalizeProductForm(values: Record<string, unknown>) {
     coverUrl: String(values.coverUrl ?? "").trim() || null,
     sortOrder: Number(values.sortOrder ?? 100),
     deliveryMode,
+    upstreamChannelId: values.upstreamChannelId ? Number(values.upstreamChannelId) : null,
     pickupUrl: values.pickupUrl ? String(values.pickupUrl) : null,
     pickupOpenMode: values.pickupOpenMode as PickupOpenMode,
     upstreamConfig

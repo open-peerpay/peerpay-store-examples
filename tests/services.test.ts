@@ -144,6 +144,37 @@ describe("store services", () => {
     expect(listUpstreamChannels(ctx)).toHaveLength(0);
   });
 
+  test("persists selected upstream channel on products", async () => {
+    const ctx = createTestContext();
+    const channel = createUpstreamChannel(ctx, {
+      name: "模板渠道",
+      config: {
+        order: { enabled: true, method: "POST", url: "https://upstream.test/order", deliveryPath: "data.secret" }
+      }
+    });
+
+    const product = createProduct(ctx, {
+      title: "渠道商品",
+      slug: "channel-product",
+      price: "20.00",
+      status: "active",
+      deliveryMode: "upstream",
+      upstreamChannelId: channel!.id,
+      upstreamConfig: {
+        sku: "sku-001",
+        token: "token-001",
+        ...channel!.config
+      }
+    });
+
+    expect(product?.upstreamChannelId).toBe(channel!.id);
+    expect(product?.upstreamConfig?.sku).toBe("sku-001");
+
+    const publicProduct = await getPublicProductAvailability(ctx, "channel-product");
+    expect(publicProduct?.upstreamChannelId).toBeNull();
+    expect(publicProduct?.upstreamConfig).toBeNull();
+  });
+
   test("hides embedded pickup until the order is paid", async () => {
     const ctx = createTestContext();
     const restorePeerPay = mockPeerPayFetch();

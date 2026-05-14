@@ -74,6 +74,7 @@ export interface Product {
   coverUrl: string | null;
   sortOrder: number;
   deliveryMode: DeliveryMode;
+  upstreamChannelId: number | null;
   pickupUrl: string | null;
   pickupOpenMode: PickupOpenMode;
   lookupMethods: ContactType[];
@@ -201,6 +202,7 @@ export interface CreateProductInput {
   coverUrl?: string | null;
   sortOrder?: number;
   deliveryMode?: DeliveryMode;
+  upstreamChannelId?: number | null;
   pickupUrl?: string | null;
   pickupOpenMode?: PickupOpenMode;
   lookupMethods?: ContactType[];

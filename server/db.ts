@@ -29,6 +29,7 @@ function migrate(db: Database) {
       cover_url TEXT,
       sort_order INTEGER NOT NULL DEFAULT 100,
       delivery_mode TEXT NOT NULL CHECK (delivery_mode IN ('card', 'upstream', 'manual')),
+      upstream_channel_id INTEGER,
       pickup_url TEXT,
       pickup_open_mode TEXT NOT NULL CHECK (pickup_open_mode IN ('none', 'iframe', 'new_tab')),
       lookup_methods TEXT NOT NULL DEFAULT '["phone","qq","email"]',
@@ -131,6 +132,7 @@ function migrate(db: Database) {
   ensureColumn(db, "orders", "remark", "ALTER TABLE orders ADD COLUMN remark TEXT");
   ensureColumn(db, "orders", "upstream_captcha", "ALTER TABLE orders ADD COLUMN upstream_captcha TEXT");
   ensureColumn(db, "orders", "upstream_captcha_token", "ALTER TABLE orders ADD COLUMN upstream_captcha_token TEXT");
+  ensureColumn(db, "products", "upstream_channel_id", "ALTER TABLE products ADD COLUMN upstream_channel_id INTEGER");
 }
 
 function rebuildOrdersTableIfNeeded(db: Database) {
