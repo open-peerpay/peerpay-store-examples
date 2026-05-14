@@ -432,6 +432,7 @@ export async function getPublicProductCaptcha(ctx: AppContext, slug: string): Pr
 
 export function createProduct(ctx: AppContext, input: CreateProductInput) {
   const normalized = normalizeProductInput(input);
+  const upstreamConfig = productUpstreamConfigForStorage(normalized.upstreamConfig, normalized.upstreamChannelId);
   const at = nowIso();
   const result = ctx.db.query(`
     INSERT INTO products (
@@ -453,7 +454,7 @@ export function createProduct(ctx: AppContext, input: CreateProductInput) {
     normalized.pickupUrl,
     normalized.pickupOpenMode,
     JSON.stringify(normalized.lookupMethods),
-    normalized.upstreamConfig ? JSON.stringify(normalized.upstreamConfig) : null,
+    upstreamConfig ? JSON.stringify(upstreamConfig) : null,
     at,
     at
   );
@@ -474,6 +475,7 @@ export function updateProduct(ctx: AppContext, id: number, input: UpdateProductI
     upstreamChannelId: input.upstreamChannelId === undefined ? current.upstreamChannelId : input.upstreamChannelId,
     upstreamConfig: input.upstreamConfig === undefined ? current.upstreamConfig : input.upstreamConfig
   });
+  const upstreamConfig = productUpstreamConfigForStorage(merged.upstreamConfig, merged.upstreamChannelId);
   const at = nowIso();
   ctx.db.query(`
     UPDATE products
@@ -494,7 +496,7 @@ export function updateProduct(ctx: AppContext, id: number, input: UpdateProductI
     merged.pickupUrl,
     merged.pickupOpenMode,
     JSON.stringify(merged.lookupMethods),
-    merged.upstreamConfig ? JSON.stringify(merged.upstreamConfig) : null,
+    upstreamConfig ? JSON.stringify(upstreamConfig) : null,
     at,
     id
   );
@@ -1397,6 +1399,7 @@ async function notifyFeishu(ctx: AppContext, title: string, text: string) {
 
 function productFromRow(ctx: AppContext, row: ProductRow): Product {
   const deliveryMode = row.delivery_mode;
+  const storedUpstreamConfig = parseJson<UpstreamConfig | null>(row.upstream_config, null);
   return {
     id: row.id,
     slug: row.slug,
@@ -1412,11 +1415,37 @@ function productFromRow(ctx: AppContext, row: ProductRow): Product {
     pickupUrl: row.pickup_url,
     pickupOpenMode: row.pickup_open_mode,
     lookupMethods: parseJson<ContactType[]>(row.lookup_methods, DEFAULT_LOOKUP_METHODS),
-    upstreamConfig: parseJson<UpstreamConfig | null>(row.upstream_config, null),
+    upstreamConfig: resolveProductUpstreamConfig(ctx, deliveryMode, row.upstream_channel_id, storedUpstreamConfig),
     availableStock: deliveryMode === "card" ? countCards(ctx, row.id) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function resolveProductUpstreamConfig(ctx: AppContext, deliveryMode: DeliveryMode, channelId: number | null, productConfig: UpstreamConfig | null) {
+  if (deliveryMode !== "upstream" || !channelId) {
+    return productConfig;
+  }
+  const channel = getUpstreamChannelById(ctx, channelId);
+  if (!channel) {
+    return productConfig;
+  }
+  return stripNullish({
+    ...channel.config,
+    sku: productConfig?.sku,
+    token: productConfig?.token
+  }) as UpstreamConfig;
+}
+
+function productUpstreamConfigForStorage(config: UpstreamConfig | null, channelId: number | null) {
+  if (!channelId) {
+    return config;
+  }
+  const identity = stripNullish({
+    sku: config?.sku,
+    token: config?.token
+  }) as UpstreamConfig;
+  return Object.keys(identity).length ? identity : null;
 }
 
 function channelFromRow(row: UpstreamChannelRow): UpstreamChannel {
@@ -1623,6 +1652,10 @@ function normalizeOptionalInteger(value: unknown) {
   }
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function stripNullish<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null));
 }
 
 function normalizeStoreAds(value: StoreAd[]) {

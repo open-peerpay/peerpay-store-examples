@@ -146,9 +146,18 @@ describe("store services", () => {
 
   test("persists selected upstream channel on products", async () => {
     const ctx = createTestContext();
+    const restoreFetch = mockFetch(async (url) => {
+      if (url.origin === "https://upstream.test" && url.pathname === "/stock") {
+        return Response.json({ data: { stock: 5 } });
+      }
+      return undefined;
+    });
     const channel = createUpstreamChannel(ctx, {
       name: "模板渠道",
       config: {
+        captcha: { enabled: true, method: "GET", url: "https://upstream.test/captcha" },
+        precheck: { enabled: true, method: "POST", url: "https://upstream.test/precheck" },
+        stock: { enabled: true, method: "POST", url: "https://upstream.test/stock", stockPath: "data.stock" },
         order: { enabled: true, method: "POST", url: "https://upstream.test/order", deliveryPath: "data.secret" }
       }
     });
@@ -162,17 +171,27 @@ describe("store services", () => {
       upstreamChannelId: channel!.id,
       upstreamConfig: {
         sku: "sku-001",
-        token: "token-001",
-        ...channel!.config
+        token: "token-001"
       }
     });
 
     expect(product?.upstreamChannelId).toBe(channel!.id);
     expect(product?.upstreamConfig?.sku).toBe("sku-001");
+    expect(product?.upstreamConfig?.captcha?.enabled).toBe(true);
+    expect(product?.upstreamConfig?.precheck?.url).toBe("https://upstream.test/precheck");
+    expect(product?.upstreamConfig?.stock?.stockPath).toBe("data.stock");
+    expect(product?.upstreamConfig?.order?.deliveryPath).toBe("data.secret");
 
-    const publicProduct = await getPublicProductAvailability(ctx, "channel-product");
-    expect(publicProduct?.upstreamChannelId).toBeNull();
-    expect(publicProduct?.upstreamConfig).toBeNull();
+    const raw = ctx.db.query("SELECT upstream_config AS config FROM products WHERE id = ?").get(product!.id) as { config: string };
+    expect(JSON.parse(raw.config)).toEqual({ sku: "sku-001", token: "token-001" });
+
+    try {
+      const publicProduct = await getPublicProductAvailability(ctx, "channel-product");
+      expect(publicProduct?.upstreamChannelId).toBeNull();
+      expect(publicProduct?.upstreamConfig).toBeNull();
+    } finally {
+      restoreFetch();
+    }
   });
 
   test("hides embedded pickup until the order is paid", async () => {
